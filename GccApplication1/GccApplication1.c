@@ -1,4 +1,3 @@
-
 #define F_CPU 1000000UL
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -8,8 +7,8 @@
 
 #define LCD_DIR		DDRD 
 #define LCD_PORT	PORTD          
-#define lcdEBit		PORTD2
-#define lcdRSBit	PORTD1
+#define LCD_E		PORTD2
+#define LCD_RS		PORTD1
 
 #define lineOne			0x00                // Line 1
 #define lineTwo			0x40                // Line 2
@@ -49,21 +48,21 @@ void LCD_string(char string[])
 
 void LCD_char(uint8_t data)
 {
-    LCD_PORT |= (1 << lcdRSBit);                 // RS high
-    LCD_PORT &= ~(1 << lcdEBit);                // E low
-    LCD_send_upper_nibble(data);                          // write the upper four bits of data
+	LCD_PORT |= (1 << LCD_RS);
+	LCD_PORT &= ~(1 << LCD_E);
+	LCD_send_upper_nibble(data);
 	_delay_us(10);
-    LCD_send_upper_nibble(data << 4);                    // write the lower 4 bits of data
+	LCD_send_upper_nibble(data << 4);
 	_delay_us(10);
 }
 
 void LCD_command(uint8_t cmd)
 {
-    LCD_PORT &= ~(1 << lcdRSBit); 
-    LCD_PORT &= ~(1 << lcdEBit); 
-    LCD_send_upper_nibble(cmd); 
+	LCD_PORT &= ~(1 << LCD_RS); 
+	LCD_PORT &= ~(1 << LCD_E); 
+	LCD_send_upper_nibble(cmd); 
 	_delay_us(10);
-    LCD_send_upper_nibble(cmd << 4);
+	LCD_send_upper_nibble(cmd << 4);
 	_delay_ms(10);
 }
 
@@ -71,14 +70,14 @@ void LCD_send_upper_nibble(uint8_t byte)
 {
 	LCD_PORT &= ~0x78; // Save the data of the LCD port (& set nibble to 0)
 	LCD_PORT |= byte >> 1 & 0x78; // set the nibble (requires shifting)
-    LCD_PORT |= (1 << lcdEBit);
-    LCD_PORT &= ~(1 << lcdEBit);
+	LCD_PORT |= (1 << LCD_E);
+	LCD_PORT &= ~(1 << LCD_E);
 }
 
 int main(void)
 {
 	LCD_init();
-	LCD_string("say my name");
+	LCD_string("Benjamin");
 	while(1)
 	{
 	}
