@@ -2,6 +2,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -10,11 +11,11 @@
 #define LCD_E		PORTA2
 #define LCD_RS		PORTA1
 
-#define lineOne			0x00                // Line 1
-#define lineTwo			0x40                // Line 2
-#define clear           0b00000001          // clears all characters
-#define home            0b00000010          // returns cursor to home
-#define setCursor       0b10000000          //sets the position of cursor
+#define lineOne		0x00                // Line 1
+#define lineTwo		0x40                // Line 2
+#define clear		0b00000001          // clears all characters
+#define home		0b00000010          // returns cursor to home
+#define setCursor	0b10000000          //sets the position of cursor
 
 void LCD_send_upper_nibble(uint8_t);
 void LCD_command(uint8_t);
@@ -30,13 +31,6 @@ void LCD_init(void)
 	LCD_command(0x2C);
 	LCD_command(0x0C);
 	LCD_command(0x01);
-//     LCD_command(reset);                 
-//     LCD_command(bit4Mode);
-// 	LCD_command(clear);
-//     LCD_command(off);                               
-//     LCD_command(clear);
-//     LCD_command(entryMode);
-//     LCD_command(on);
 }
 
 void LCD_string(char string[])
@@ -101,27 +95,33 @@ unsigned char UART_get_char (void)
 	return UDR;
 }
 
+#define CREADER_BUFF_SIZE 12		// card reader buffer size
+struct {
+	volatile char ID_str[CREADER_BUFF_SIZE + 1]; //extra char for null terminator
+	volatile uint8_t index; // ptr to an unoccupied 
+	volatile bool locked; // is the buffer ready to be consumed?
+} creader_buff;
 
-char * UART_get_string() 
-{
-	static char line_buf[10];
-	return line_buf;
+
+inline void waitfor_creader_buff(void) {
+	while (!creader_buff.locked); // wait until buffer is locked
+}
+
+inline void release_creader_buff(void) {
+	creader_buff.locked = false;
 }
 
 ISR(USART_RXC_vect)
 {
-	volatile static uint8_t i = 0;
-	volatile char c = UART_get_char();
-	if (i == 16) {
-		LCD_command(setCursor | lineTwo);
-	} else if (i == 32) {
-		LCD_command(clear);
-		LCD_command(home);
-		i = 0;
+	char c = UART_get_char();
+	if (!creader_buff.locked) { // modify buffer if not locked
+		creader_buff.ID_str[creader_buff.index++] = c;
+		if (creader_buff.index == CREADER_BUFF_SIZE) {
+			creader_buff.index = 0;
+			creader_buff.locked = true; // lock the buffer so it won't be modified until consumed
+		}
 	}
-	LCD_char(c);
 	UART_send(c);
-	i++;
 }
 
 int main(void)
@@ -131,6 +131,12 @@ int main(void)
 	sei();
 	while(1)
 	{
+		waitfor_creader_buff();
+		LCD_command(clear);
+		LCD_command(home);
+		LCD_string((char *)creader_buff.ID_str);
+		UART_send('\n');
+		release_creader_buff();
 	}
 	return 0;
 }
