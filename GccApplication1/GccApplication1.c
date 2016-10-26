@@ -83,8 +83,10 @@ void UART_init (void)
 	PORTD |= 0x01; // Enable transmitter
 	UBRRH = (BAUDRATE>>8);
 	UBRRL = BAUDRATE;
-	UCSRB |= (1<<TXEN)|(1<<RXEN);
-	UCSRC |= (1<<URSEL)|(1<<UCSZ0)|(1<<UCSZ1);   // 8bit data format 1 parity
+	UCSRB = (1<<TXEN)|(1<<RXEN);
+	UCSRC = (1<<URSEL)|(1<<UCSZ0)|(1<<UCSZ1);   // 8bit data format 1 parity
+	
+	UCSRB |= (1 << RXCIE); 
 }
 
 void UART_send (unsigned char data)
@@ -99,15 +101,27 @@ unsigned char UART_get_char (void)
 	return UDR;
 }
 
+
+char * UART_get_string() 
+{
+	static char line_buf[10];
+	return line_buf;
+}
+
+ISR(USART_RXC_vect)
+{
+	volatile char c = UART_get_char();
+	UART_send(c);
+}
+
 int main(void)
 {
 	LCD_init();
 	UART_init();
-	LCD_string("ECHO");
+	LCD_string("Echo interrupt");
+	sei();
 	while(1)
 	{
-		volatile char c = UART_get_char();
-		UART_send(c);
 	}
 	return 0;
 }
