@@ -1,5 +1,4 @@
 
-
 #define F_CPU 1000000UL
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -32,85 +31,58 @@
 void lcd_write(uint8_t);
 void lcd_instruction(uint8_t);
 void lcd_char(uint8_t);
-void lcd_string(uint8_t *);
+void lcd_string(char[]);
 void lcd_init(void);
 void adc_init(void);
 long adc_read(void);
 
 
-
 int main(void)
 {
-
-    lcdDdr |= (1 << lcdD7Bit) | (1 << lcdD6Bit) | (1 << lcdD5Bit) | (1 << lcdD4Bit) | (1 << lcdEBit) | (1 << lcdRSBit);                  
-                 
-
     lcd_init(); 
-   
-	lcd_string("qazza");
-	
+	lcd_string("judge me free");	
 	while(1)
 	{
-
-			
 	}
 	
-    
+    return 0;
 }
 
 void lcd_init(void)
 {
-
+	lcdDdr |= (1 << lcdD7Bit) | (1 << lcdD6Bit) | (1 << lcdD5Bit) | (1 << lcdD4Bit) | (1 << lcdEBit) | (1 << lcdRSBit);
     _delay_ms(100);                                
-
-    lcdPort &= ~(1 << lcdRSBit);                 // RS low
-    lcdPort &= ~(1 << lcdEBit);                 // E low
-
-// LCD resets
+    lcdPort &= ~(1 << lcdRSBit);
+    lcdPort &= ~(1 << lcdEBit);
     lcd_write(reset);                 
-    _delay_ms(8);                           // 5 ms delay min
-
+    _delay_ms(8);
     lcd_write(reset);                 
-    _delay_us(200);                       // 100 us delay min
-
+    _delay_us(200);
     lcd_write(reset);                 
     _delay_us(200);                                 
- 
-    lcd_write(bit4Mode);               	//set to 4 bit mode
-    _delay_us(50);                     // 40us delay min
-
-    lcd_instruction(bit4Mode);   	 // set 4 bit mode
-    _delay_us(50);                  // 40 us delay min
-
-// display off
-    lcd_instruction(off);        	// turn off display
+    lcd_write(bit4Mode);
+    _delay_us(50);
+    lcd_instruction(bit4Mode);
+    _delay_us(50);
+    lcd_instruction(off);
     _delay_us(50);                                  
-
-// Clear display
-    lcd_instruction(clear);              // clear display 
-    _delay_ms(3);                       // 1.64 ms delay min
-
-// entry mode
-    lcd_instruction(entryMode);          // this instruction shifts the cursor
-    _delay_us(40);                      // 40 us delay min
-
-// Display on
-    lcd_instruction(on);          // turn on the display
-    _delay_us(50);               // same delay as off
+    lcd_instruction(clear);
+    _delay_ms(3);
+    lcd_instruction(entryMode);
+    _delay_us(40);
+    lcd_instruction(on);
+    _delay_us(50);
 }
 
 
-void lcd_string(uint8_t* string)
+void lcd_string(char string[])
 {
-    volatile int i = 0;                             //while the string is not empty
-    while (string[i] != 0)
+    for (int i = 0; string[i] != 0; i++)
     {
         lcd_char(string[i]);
-        i++;
-        _delay_us(50);                              //40 us delay min
+        _delay_us(50);
     }
 }
-
 
 
 void lcd_char(uint8_t data)
@@ -145,8 +117,7 @@ void lcd_write(uint8_t byte)
     lcdPort &= ~(1 << lcdD4Bit);
     if (byte & 1 << 4) lcdPort |= (1 << lcdD4Bit);
 
-// write the data
-                                                   
+                               
     lcdPort |= (1 << lcdEBit);                   // E high
     _delay_us(1);                               // data setup 
     lcdPort &= ~(1 << lcdEBit);                // E low

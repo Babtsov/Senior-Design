@@ -3,27 +3,27 @@ GccApplication1.elf:     file format elf32-avr
 
 Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
-  0 .text         000001e8  00000000  00000000  00000074  2**1
+  0 .text         000001b0  00000000  00000000  00000074  2**1
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
-  1 .data         00000006  00800060  000001e8  0000025c  2**0
+  1 .data         0000000e  00800060  000001b0  00000224  2**0
                   CONTENTS, ALLOC, LOAD, DATA
-  2 .comment      00000030  00000000  00000000  00000262  2**0
+  2 .comment      00000030  00000000  00000000  00000232  2**0
                   CONTENTS, READONLY
-  3 .debug_aranges 00000048  00000000  00000000  00000292  2**0
+  3 .debug_aranges 00000048  00000000  00000000  00000262  2**0
                   CONTENTS, READONLY, DEBUGGING
-  4 .debug_info   0000060d  00000000  00000000  000002da  2**0
+  4 .debug_info   00000613  00000000  00000000  000002aa  2**0
                   CONTENTS, READONLY, DEBUGGING
-  5 .debug_abbrev 00000197  00000000  00000000  000008e7  2**0
+  5 .debug_abbrev 00000190  00000000  00000000  000008bd  2**0
                   CONTENTS, READONLY, DEBUGGING
-  6 .debug_line   00000241  00000000  00000000  00000a7e  2**0
+  6 .debug_line   0000024b  00000000  00000000  00000a4d  2**0
                   CONTENTS, READONLY, DEBUGGING
-  7 .debug_frame  000000a0  00000000  00000000  00000cc0  2**2
+  7 .debug_frame  00000090  00000000  00000000  00000c98  2**2
                   CONTENTS, READONLY, DEBUGGING
-  8 .debug_str    000001b8  00000000  00000000  00000d60  2**0
+  8 .debug_str    000001b8  00000000  00000000  00000d28  2**0
                   CONTENTS, READONLY, DEBUGGING
-  9 .debug_loc    00000161  00000000  00000000  00000f18  2**0
+  9 .debug_loc    00000177  00000000  00000000  00000ee0  2**0
                   CONTENTS, READONLY, DEBUGGING
- 10 .debug_ranges 00000038  00000000  00000000  00001079  2**0
+ 10 .debug_ranges 00000038  00000000  00000000  00001057  2**0
                   CONTENTS, READONLY, DEBUGGING
 
 Disassembly of section .text:
@@ -63,16 +63,16 @@ Disassembly of section .text:
   60:	10 e0       	ldi	r17, 0x00	; 0
   62:	a0 e6       	ldi	r26, 0x60	; 96
   64:	b0 e0       	ldi	r27, 0x00	; 0
-  66:	e8 ee       	ldi	r30, 0xE8	; 232
+  66:	e0 eb       	ldi	r30, 0xB0	; 176
   68:	f1 e0       	ldi	r31, 0x01	; 1
   6a:	02 c0       	rjmp	.+4      	; 0x70 <__do_copy_data+0x10>
   6c:	05 90       	lpm	r0, Z+
   6e:	0d 92       	st	X+, r0
-  70:	a6 36       	cpi	r26, 0x66	; 102
+  70:	ae 36       	cpi	r26, 0x6E	; 110
   72:	b1 07       	cpc	r27, r17
   74:	d9 f7       	brne	.-10     	; 0x6c <__do_copy_data+0xc>
-  76:	0e 94 e8 00 	call	0x1d0	; 0x1d0 <main>
-  7a:	0c 94 f2 00 	jmp	0x1e4	; 0x1e4 <_exit>
+  76:	0e 94 cf 00 	call	0x19e	; 0x19e <main>
+  7a:	0c 94 d6 00 	jmp	0x1ac	; 0x1ac <_exit>
 
 0000007e <__bad_interrupt>:
   7e:	0c 94 00 00 	jmp	0	; 0x0 <__vectors>
@@ -108,8 +108,7 @@ void lcd_write(uint8_t byte)
   98:	84 fd       	sbrc	r24, 4
   9a:	93 9a       	sbi	0x12, 3	; 18
 
-// write the data
-                                                   
+                               
     lcdPort |= (1 << lcdEBit);                   // E high
   9c:	92 9a       	sbi	0x12, 2	; 18
 	#else
@@ -126,8 +125,8 @@ void lcd_write(uint8_t byte)
   a4:	08 95       	ret
 
 000000a6 <lcd_char>:
+    }
 }
-
 
 
 void lcd_char(uint8_t data)
@@ -150,254 +149,207 @@ void lcd_char(uint8_t data)
   be:	08 95       	ret
 
 000000c0 <lcd_string>:
-    _delay_us(50);               // same delay as off
+    _delay_us(50);
 }
 
 
-void lcd_string(uint8_t* string)
+void lcd_string(char string[])
 {
-  c0:	0f 93       	push	r16
-  c2:	1f 93       	push	r17
-  c4:	cf 93       	push	r28
-  c6:	df 93       	push	r29
-  c8:	00 d0       	rcall	.+0      	; 0xca <lcd_string+0xa>
-  ca:	cd b7       	in	r28, 0x3d	; 61
-  cc:	de b7       	in	r29, 0x3e	; 62
-  ce:	8c 01       	movw	r16, r24
-    volatile int i = 0;                             //while the string is not empty
-  d0:	1a 82       	std	Y+2, r1	; 0x02
-  d2:	19 82       	std	Y+1, r1	; 0x01
-    while (string[i] != 0)
-  d4:	e9 81       	ldd	r30, Y+1	; 0x01
-  d6:	fa 81       	ldd	r31, Y+2	; 0x02
-  d8:	e8 0f       	add	r30, r24
-  da:	f9 1f       	adc	r31, r25
-  dc:	80 81       	ld	r24, Z
-  de:	88 23       	and	r24, r24
-  e0:	b9 f0       	breq	.+46     	; 0x110 <lcd_string+0x50>
+  c0:	cf 93       	push	r28
+  c2:	df 93       	push	r29
+  c4:	ec 01       	movw	r28, r24
+    for (int i = 0; string[i] != 0; i++)
+  c6:	88 81       	ld	r24, Y
+  c8:	88 23       	and	r24, r24
+  ca:	51 f0       	breq	.+20     	; 0xe0 <lcd_string+0x20>
+  cc:	21 96       	adiw	r28, 0x01	; 1
     {
         lcd_char(string[i]);
-  e2:	e9 81       	ldd	r30, Y+1	; 0x01
-  e4:	fa 81       	ldd	r31, Y+2	; 0x02
-  e6:	e0 0f       	add	r30, r16
-  e8:	f1 1f       	adc	r31, r17
-  ea:	80 81       	ld	r24, Z
-  ec:	0e 94 53 00 	call	0xa6	; 0xa6 <lcd_char>
-        i++;
-  f0:	89 81       	ldd	r24, Y+1	; 0x01
-  f2:	9a 81       	ldd	r25, Y+2	; 0x02
-  f4:	01 96       	adiw	r24, 0x01	; 1
-  f6:	9a 83       	std	Y+2, r25	; 0x02
-  f8:	89 83       	std	Y+1, r24	; 0x01
-  fa:	80 e1       	ldi	r24, 0x10	; 16
-  fc:	8a 95       	dec	r24
-  fe:	f1 f7       	brne	.-4      	; 0xfc <lcd_string+0x3c>
- 100:	00 c0       	rjmp	.+0      	; 0x102 <lcd_string+0x42>
+  ce:	0e 94 53 00 	call	0xa6	; 0xa6 <lcd_char>
+  d2:	80 e1       	ldi	r24, 0x10	; 16
+  d4:	8a 95       	dec	r24
+  d6:	f1 f7       	brne	.-4      	; 0xd4 <lcd_string+0x14>
+  d8:	00 c0       	rjmp	.+0      	; 0xda <lcd_string+0x1a>
+}
 
 
-void lcd_string(uint8_t* string)
+void lcd_string(char string[])
 {
-    volatile int i = 0;                             //while the string is not empty
-    while (string[i] != 0)
- 102:	e9 81       	ldd	r30, Y+1	; 0x01
- 104:	fa 81       	ldd	r31, Y+2	; 0x02
- 106:	e0 0f       	add	r30, r16
- 108:	f1 1f       	adc	r31, r17
- 10a:	80 81       	ld	r24, Z
- 10c:	81 11       	cpse	r24, r1
- 10e:	e9 cf       	rjmp	.-46     	; 0xe2 <lcd_string+0x22>
+    for (int i = 0; string[i] != 0; i++)
+  da:	89 91       	ld	r24, Y+
+  dc:	81 11       	cpse	r24, r1
+  de:	f7 cf       	rjmp	.-18     	; 0xce <lcd_string+0xe>
     {
         lcd_char(string[i]);
-        i++;
-        _delay_us(50);                              //40 us delay min
+        _delay_us(50);
     }
 }
- 110:	0f 90       	pop	r0
- 112:	0f 90       	pop	r0
- 114:	df 91       	pop	r29
- 116:	cf 91       	pop	r28
- 118:	1f 91       	pop	r17
- 11a:	0f 91       	pop	r16
- 11c:	08 95       	ret
+  e0:	df 91       	pop	r29
+  e2:	cf 91       	pop	r28
+  e4:	08 95       	ret
 
-0000011e <lcd_instruction>:
+000000e6 <lcd_instruction>:
     lcd_write(data << 4);                    // write the lower 4 bits of data
 }
 
 
 void lcd_instruction(uint8_t instruction)
 {
- 11e:	cf 93       	push	r28
- 120:	c8 2f       	mov	r28, r24
+  e6:	cf 93       	push	r28
+  e8:	c8 2f       	mov	r28, r24
     lcdPort &= ~(1 << lcdRSBit);                // RS low
- 122:	91 98       	cbi	0x12, 1	; 18
+  ea:	91 98       	cbi	0x12, 1	; 18
     lcdPort &= ~(1 << lcdEBit);                // E low
- 124:	92 98       	cbi	0x12, 2	; 18
+  ec:	92 98       	cbi	0x12, 2	; 18
     lcd_write(instruction);                   // write the upper 4 bits of data
- 126:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
+  ee:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
     lcd_write(instruction << 4);             // write the lower 4 bits of data
- 12a:	8c 2f       	mov	r24, r28
- 12c:	82 95       	swap	r24
- 12e:	80 7f       	andi	r24, 0xF0	; 240
- 130:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
+  f2:	8c 2f       	mov	r24, r28
+  f4:	82 95       	swap	r24
+  f6:	80 7f       	andi	r24, 0xF0	; 240
+  f8:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
 }
- 134:	cf 91       	pop	r28
- 136:	08 95       	ret
+  fc:	cf 91       	pop	r28
+  fe:	08 95       	ret
 
-00000138 <lcd_init>:
-	#else
-		//round up by default
-		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
-	#endif
+00000100 <lcd_init>:
+    return 0;
+}
 
-	__builtin_avr_delay_cycles(__ticks_dc);
- 138:	87 ea       	ldi	r24, 0xA7	; 167
- 13a:	91 e6       	ldi	r25, 0x61	; 97
- 13c:	01 97       	sbiw	r24, 0x01	; 1
- 13e:	f1 f7       	brne	.-4      	; 0x13c <lcd_init+0x4>
- 140:	00 c0       	rjmp	.+0      	; 0x142 <lcd_init+0xa>
- 142:	00 00       	nop
 void lcd_init(void)
 {
+	lcdDdr |= (1 << lcdD7Bit) | (1 << lcdD6Bit) | (1 << lcdD5Bit) | (1 << lcdD4Bit) | (1 << lcdEBit) | (1 << lcdRSBit);
+ 100:	81 b3       	in	r24, 0x11	; 17
+ 102:	8e 67       	ori	r24, 0x7E	; 126
+ 104:	81 bb       	out	0x11, r24	; 17
+	#else
+		//round up by default
+		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
+	#endif
 
+	__builtin_avr_delay_cycles(__ticks_dc);
+ 106:	87 ea       	ldi	r24, 0xA7	; 167
+ 108:	91 e6       	ldi	r25, 0x61	; 97
+ 10a:	01 97       	sbiw	r24, 0x01	; 1
+ 10c:	f1 f7       	brne	.-4      	; 0x10a <lcd_init+0xa>
+ 10e:	00 c0       	rjmp	.+0      	; 0x110 <lcd_init+0x10>
+ 110:	00 00       	nop
     _delay_ms(100);                                
-
-    lcdPort &= ~(1 << lcdRSBit);                 // RS low
- 144:	91 98       	cbi	0x12, 1	; 18
-    lcdPort &= ~(1 << lcdEBit);                 // E low
- 146:	92 98       	cbi	0x12, 2	; 18
-
-// LCD resets
+    lcdPort &= ~(1 << lcdRSBit);
+ 112:	91 98       	cbi	0x12, 1	; 18
+    lcdPort &= ~(1 << lcdEBit);
+ 114:	92 98       	cbi	0x12, 2	; 18
     lcd_write(reset);                 
- 148:	80 e3       	ldi	r24, 0x30	; 48
- 14a:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
- 14e:	8f ec       	ldi	r24, 0xCF	; 207
- 150:	97 e0       	ldi	r25, 0x07	; 7
- 152:	01 97       	sbiw	r24, 0x01	; 1
- 154:	f1 f7       	brne	.-4      	; 0x152 <lcd_init+0x1a>
- 156:	00 c0       	rjmp	.+0      	; 0x158 <lcd_init+0x20>
- 158:	00 00       	nop
-    _delay_ms(8);                           // 5 ms delay min
-
+ 116:	80 e3       	ldi	r24, 0x30	; 48
+ 118:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
+ 11c:	8f ec       	ldi	r24, 0xCF	; 207
+ 11e:	97 e0       	ldi	r25, 0x07	; 7
+ 120:	01 97       	sbiw	r24, 0x01	; 1
+ 122:	f1 f7       	brne	.-4      	; 0x120 <lcd_init+0x20>
+ 124:	00 c0       	rjmp	.+0      	; 0x126 <lcd_init+0x26>
+ 126:	00 00       	nop
+    _delay_ms(8);
     lcd_write(reset);                 
- 15a:	80 e3       	ldi	r24, 0x30	; 48
- 15c:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
+ 128:	80 e3       	ldi	r24, 0x30	; 48
+ 12a:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
 	#else
 		//round up by default
 		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
 	#endif
 
 	__builtin_avr_delay_cycles(__ticks_dc);
- 160:	92 e4       	ldi	r25, 0x42	; 66
- 162:	9a 95       	dec	r25
- 164:	f1 f7       	brne	.-4      	; 0x162 <lcd_init+0x2a>
- 166:	00 c0       	rjmp	.+0      	; 0x168 <lcd_init+0x30>
-    _delay_us(200);                       // 100 us delay min
-
+ 12e:	92 e4       	ldi	r25, 0x42	; 66
+ 130:	9a 95       	dec	r25
+ 132:	f1 f7       	brne	.-4      	; 0x130 <lcd_init+0x30>
+ 134:	00 c0       	rjmp	.+0      	; 0x136 <lcd_init+0x36>
+    _delay_us(200);
     lcd_write(reset);                 
- 168:	80 e3       	ldi	r24, 0x30	; 48
- 16a:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
- 16e:	82 e4       	ldi	r24, 0x42	; 66
- 170:	8a 95       	dec	r24
- 172:	f1 f7       	brne	.-4      	; 0x170 <lcd_init+0x38>
- 174:	00 c0       	rjmp	.+0      	; 0x176 <lcd_init+0x3e>
+ 136:	80 e3       	ldi	r24, 0x30	; 48
+ 138:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
+ 13c:	82 e4       	ldi	r24, 0x42	; 66
+ 13e:	8a 95       	dec	r24
+ 140:	f1 f7       	brne	.-4      	; 0x13e <lcd_init+0x3e>
+ 142:	00 c0       	rjmp	.+0      	; 0x144 <lcd_init+0x44>
     _delay_us(200);                                 
- 
-    lcd_write(bit4Mode);               	//set to 4 bit mode
- 176:	88 e2       	ldi	r24, 0x28	; 40
- 178:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
- 17c:	90 e1       	ldi	r25, 0x10	; 16
- 17e:	9a 95       	dec	r25
- 180:	f1 f7       	brne	.-4      	; 0x17e <lcd_init+0x46>
- 182:	00 c0       	rjmp	.+0      	; 0x184 <lcd_init+0x4c>
-    _delay_us(50);                     // 40us delay min
-
-    lcd_instruction(bit4Mode);   	 // set 4 bit mode
- 184:	88 e2       	ldi	r24, 0x28	; 40
- 186:	0e 94 8f 00 	call	0x11e	; 0x11e <lcd_instruction>
- 18a:	80 e1       	ldi	r24, 0x10	; 16
- 18c:	8a 95       	dec	r24
- 18e:	f1 f7       	brne	.-4      	; 0x18c <lcd_init+0x54>
- 190:	00 c0       	rjmp	.+0      	; 0x192 <lcd_init+0x5a>
-    _delay_us(50);                  // 40 us delay min
-
-// display off
-    lcd_instruction(off);        	// turn off display
- 192:	88 e0       	ldi	r24, 0x08	; 8
- 194:	0e 94 8f 00 	call	0x11e	; 0x11e <lcd_instruction>
- 198:	90 e1       	ldi	r25, 0x10	; 16
- 19a:	9a 95       	dec	r25
- 19c:	f1 f7       	brne	.-4      	; 0x19a <lcd_init+0x62>
- 19e:	00 c0       	rjmp	.+0      	; 0x1a0 <lcd_init+0x68>
+    lcd_write(bit4Mode);
+ 144:	88 e2       	ldi	r24, 0x28	; 40
+ 146:	0e 94 41 00 	call	0x82	; 0x82 <lcd_write>
+ 14a:	90 e1       	ldi	r25, 0x10	; 16
+ 14c:	9a 95       	dec	r25
+ 14e:	f1 f7       	brne	.-4      	; 0x14c <lcd_init+0x4c>
+ 150:	00 c0       	rjmp	.+0      	; 0x152 <lcd_init+0x52>
+    _delay_us(50);
+    lcd_instruction(bit4Mode);
+ 152:	88 e2       	ldi	r24, 0x28	; 40
+ 154:	0e 94 73 00 	call	0xe6	; 0xe6 <lcd_instruction>
+ 158:	80 e1       	ldi	r24, 0x10	; 16
+ 15a:	8a 95       	dec	r24
+ 15c:	f1 f7       	brne	.-4      	; 0x15a <lcd_init+0x5a>
+ 15e:	00 c0       	rjmp	.+0      	; 0x160 <lcd_init+0x60>
+    _delay_us(50);
+    lcd_instruction(off);
+ 160:	88 e0       	ldi	r24, 0x08	; 8
+ 162:	0e 94 73 00 	call	0xe6	; 0xe6 <lcd_instruction>
+ 166:	90 e1       	ldi	r25, 0x10	; 16
+ 168:	9a 95       	dec	r25
+ 16a:	f1 f7       	brne	.-4      	; 0x168 <lcd_init+0x68>
+ 16c:	00 c0       	rjmp	.+0      	; 0x16e <lcd_init+0x6e>
     _delay_us(50);                                  
-
-// Clear display
-    lcd_instruction(clear);              // clear display 
- 1a0:	81 e0       	ldi	r24, 0x01	; 1
- 1a2:	0e 94 8f 00 	call	0x11e	; 0x11e <lcd_instruction>
+    lcd_instruction(clear);
+ 16e:	81 e0       	ldi	r24, 0x01	; 1
+ 170:	0e 94 73 00 	call	0xe6	; 0xe6 <lcd_instruction>
 	#else
 		//round up by default
 		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
 	#endif
 
 	__builtin_avr_delay_cycles(__ticks_dc);
- 1a6:	8d ee       	ldi	r24, 0xED	; 237
- 1a8:	92 e0       	ldi	r25, 0x02	; 2
- 1aa:	01 97       	sbiw	r24, 0x01	; 1
- 1ac:	f1 f7       	brne	.-4      	; 0x1aa <lcd_init+0x72>
- 1ae:	00 c0       	rjmp	.+0      	; 0x1b0 <lcd_init+0x78>
- 1b0:	00 00       	nop
-    _delay_ms(3);                       // 1.64 ms delay min
-
-// entry mode
-    lcd_instruction(entryMode);          // this instruction shifts the cursor
- 1b2:	86 e0       	ldi	r24, 0x06	; 6
- 1b4:	0e 94 8f 00 	call	0x11e	; 0x11e <lcd_instruction>
+ 174:	8d ee       	ldi	r24, 0xED	; 237
+ 176:	92 e0       	ldi	r25, 0x02	; 2
+ 178:	01 97       	sbiw	r24, 0x01	; 1
+ 17a:	f1 f7       	brne	.-4      	; 0x178 <lcd_init+0x78>
+ 17c:	00 c0       	rjmp	.+0      	; 0x17e <lcd_init+0x7e>
+ 17e:	00 00       	nop
+    _delay_ms(3);
+    lcd_instruction(entryMode);
+ 180:	86 e0       	ldi	r24, 0x06	; 6
+ 182:	0e 94 73 00 	call	0xe6	; 0xe6 <lcd_instruction>
 	#else
 		//round up by default
 		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
 	#endif
 
 	__builtin_avr_delay_cycles(__ticks_dc);
- 1b8:	9d e0       	ldi	r25, 0x0D	; 13
- 1ba:	9a 95       	dec	r25
- 1bc:	f1 f7       	brne	.-4      	; 0x1ba <lcd_init+0x82>
- 1be:	00 00       	nop
-    _delay_us(40);                      // 40 us delay min
+ 186:	9d e0       	ldi	r25, 0x0D	; 13
+ 188:	9a 95       	dec	r25
+ 18a:	f1 f7       	brne	.-4      	; 0x188 <lcd_init+0x88>
+ 18c:	00 00       	nop
+    _delay_us(40);
+    lcd_instruction(on);
+ 18e:	8c e0       	ldi	r24, 0x0C	; 12
+ 190:	0e 94 73 00 	call	0xe6	; 0xe6 <lcd_instruction>
+ 194:	80 e1       	ldi	r24, 0x10	; 16
+ 196:	8a 95       	dec	r24
+ 198:	f1 f7       	brne	.-4      	; 0x196 <lcd_init+0x96>
+ 19a:	00 c0       	rjmp	.+0      	; 0x19c <lcd_init+0x9c>
+ 19c:	08 95       	ret
 
-// Display on
-    lcd_instruction(on);          // turn on the display
- 1c0:	8c e0       	ldi	r24, 0x0C	; 12
- 1c2:	0e 94 8f 00 	call	0x11e	; 0x11e <lcd_instruction>
- 1c6:	80 e1       	ldi	r24, 0x10	; 16
- 1c8:	8a 95       	dec	r24
- 1ca:	f1 f7       	brne	.-4      	; 0x1c8 <lcd_init+0x90>
- 1cc:	00 c0       	rjmp	.+0      	; 0x1ce <lcd_init+0x96>
- 1ce:	08 95       	ret
-
-000001d0 <main>:
+0000019e <main>:
+long adc_read(void);
 
 
 int main(void)
 {
-
-    lcdDdr |= (1 << lcdD7Bit) | (1 << lcdD6Bit) | (1 << lcdD5Bit) | (1 << lcdD4Bit) | (1 << lcdEBit) | (1 << lcdRSBit);                  
- 1d0:	81 b3       	in	r24, 0x11	; 17
- 1d2:	8e 67       	ori	r24, 0x7E	; 126
- 1d4:	81 bb       	out	0x11, r24	; 17
-                 
-
     lcd_init(); 
- 1d6:	0e 94 9c 00 	call	0x138	; 0x138 <lcd_init>
-   
-	lcd_string("qazza");
- 1da:	80 e6       	ldi	r24, 0x60	; 96
- 1dc:	90 e0       	ldi	r25, 0x00	; 0
- 1de:	0e 94 60 00 	call	0xc0	; 0xc0 <lcd_string>
- 1e2:	ff cf       	rjmp	.-2      	; 0x1e2 <main+0x12>
+ 19e:	0e 94 80 00 	call	0x100	; 0x100 <lcd_init>
+	lcd_string("judge me free");	
+ 1a2:	80 e6       	ldi	r24, 0x60	; 96
+ 1a4:	90 e0       	ldi	r25, 0x00	; 0
+ 1a6:	0e 94 60 00 	call	0xc0	; 0xc0 <lcd_string>
+ 1aa:	ff cf       	rjmp	.-2      	; 0x1aa <main+0xc>
 
-000001e4 <_exit>:
- 1e4:	f8 94       	cli
+000001ac <_exit>:
+ 1ac:	f8 94       	cli
 
-000001e6 <__stop_program>:
- 1e6:	ff cf       	rjmp	.-2      	; 0x1e6 <__stop_program>
+000001ae <__stop_program>:
+ 1ae:	ff cf       	rjmp	.-2      	; 0x1ae <__stop_program>
