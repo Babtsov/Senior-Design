@@ -40,7 +40,7 @@ long adc_read(void);
 int main(void)
 {
     lcd_init(); 
-	lcd_string("YESS");	
+	lcd_string("commit");	
 	while(1)
 	{
 	}
@@ -102,12 +102,10 @@ void lcd_instruction(uint8_t instruction)
     lcd_write(instruction << 4);             // write the lower 4 bits of data
 }
 
-
 void lcd_write(uint8_t byte)
 {
-	lcdPort = (lcdPort & ~0x78) | (byte >> 1 & 0x78); // save port state, & set upper nibble of byte	
+	lcdPort &= ~0x78;
+	lcdPort |= byte >> 1 & 0x78;
     lcdPort |= (1 << lcdEBit);
-    _delay_us(1);
     lcdPort &= ~(1 << lcdEBit);
-    _delay_us(1);
 }
