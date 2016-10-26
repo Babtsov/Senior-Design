@@ -14,11 +14,6 @@
 #define lineTwo			0x40                // Line 2
 #define clear           0b00000001          // clears all characters
 #define home            0b00000010          // returns cursor to home
-#define entryMode       0b00000110          // moves cursor from left to right
-#define off      		0b00001000          // LCD off
-#define on       		0b00001100          // LCD on
-#define reset   		0b00110000          // reset the LCD
-#define bit4Mode 		0b00101000          // we are using 4 bits of data
 #define setCursor       0b10000000          //sets the position of cursor
 
 void LCD_send_upper_nibble(uint8_t);
@@ -30,13 +25,18 @@ void LCD_init(void);
 void LCD_init(void)
 {
 	LCD_DIR |= 0x7E; // Data: PORTD6..PORTD3, E: PORTD2, RS: PORTD1
-    LCD_command(reset);                 
-    LCD_command(bit4Mode);
-	LCD_command(clear);
-    LCD_command(off);                               
-    LCD_command(clear);
-    LCD_command(entryMode);
-    LCD_command(on);
+	LCD_command(0x33);
+	LCD_command(0x32);
+	LCD_command(0x2C);
+	LCD_command(0x0C);
+	LCD_command(0x01);
+//     LCD_command(reset);                 
+//     LCD_command(bit4Mode);
+// 	LCD_command(clear);
+//     LCD_command(off);                               
+//     LCD_command(clear);
+//     LCD_command(entryMode);
+//     LCD_command(on);
 }
 
 void LCD_string(char string[])
@@ -110,15 +110,24 @@ char * UART_get_string()
 
 ISR(USART_RXC_vect)
 {
+	volatile static uint8_t i = 0;
 	volatile char c = UART_get_char();
+	if (i == 16) {
+		LCD_command(setCursor | lineTwo);
+	} else if (i == 32) {
+		LCD_command(clear);
+		LCD_command(home);
+		i = 0;
+	}
+	LCD_char(c);
 	UART_send(c);
+	i++;
 }
 
 int main(void)
 {
 	LCD_init();
 	UART_init();
-	LCD_string("Echo interrupt");
 	sei();
 	while(1)
 	{
