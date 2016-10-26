@@ -40,7 +40,7 @@ long adc_read(void);
 int main(void)
 {
     lcd_init(); 
-	lcd_string("judge me free");	
+	lcd_string("YESS");	
 	while(1)
 	{
 	}
@@ -105,21 +105,9 @@ void lcd_instruction(uint8_t instruction)
 
 void lcd_write(uint8_t byte)
 {
-    lcdPort &= ~(1 << lcdD7Bit);                        // assume that data is '0'
-    if (byte & 1 << 7) lcdPort |= (1 << lcdD7Bit);     // make data = '1' if necessary
-
-    lcdPort &= ~(1 << lcdD6Bit);                        // repeat for each data bit
-    if (byte & 1 << 6) lcdPort |= (1 << lcdD6Bit);
-
-    lcdPort &= ~(1 << lcdD5Bit);
-    if (byte & 1 << 5) lcdPort |= (1 << lcdD5Bit);
-
-    lcdPort &= ~(1 << lcdD4Bit);
-    if (byte & 1 << 4) lcdPort |= (1 << lcdD4Bit);
-
-                               
-    lcdPort |= (1 << lcdEBit);                   // E high
-    _delay_us(1);                               // data setup 
-    lcdPort &= ~(1 << lcdEBit);                // E low
-    _delay_us(1);                             // hold data 
+	lcdPort = (lcdPort & ~0x78) | (byte >> 1 & 0x78); // save port state, & set upper nibble of byte	
+    lcdPort |= (1 << lcdEBit);
+    _delay_us(1);
+    lcdPort &= ~(1 << lcdEBit);
+    _delay_us(1);
 }
