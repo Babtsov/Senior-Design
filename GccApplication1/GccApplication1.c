@@ -75,36 +75,39 @@ void LCD_send_upper_nibble(uint8_t byte)
 	LCD_PORT &= ~(1 << LCD_E);
 }
 
-// define some macros
-#define BAUD 9600                                   // define baud
-#define BAUDRATE 25            // set baud rate value for UBRR
 
-// function to initialize UART
-void uart_init (void)
+#define BAUDRATE 25 // baud rate: 2400 (see pg. 168)
+
+void UART_init (void)
 {
-	UBRRH = (BAUDRATE>>8);                      // shift the register right by 8 bits
-	UBRRL = BAUDRATE;                           // set baud rate
-	UCSRB|= (1<<TXEN)|(1<<RXEN);                // enable receiver and transmitter
-	UCSRC|= (1<<URSEL)|(1<<UCSZ0)|(1<<UCSZ1);   // 8bit data format
+	PORTD |= 0x01; // Enable transmitter
+	UBRRH = (BAUDRATE>>8);
+	UBRRL = BAUDRATE;
+	UCSRB |= (1<<TXEN)|(1<<RXEN);
+	UCSRC |= (1<<URSEL)|(1<<UCSZ0)|(1<<UCSZ1);   // 8bit data format 1 parity
 }
 
-// function to send data
-void uart_transmit (unsigned char data)
+void UART_send (unsigned char data)
 {
-	while (!( UCSRA & (1<<UDRE)));                // wait while register is free
-	UDR = data;                                   // load data in the register
+	while (!( UCSRA & (1<<UDRE))); // wait
+	UDR = data;
+}
+
+unsigned char UART_get_char (void)
+{
+	while(!(UCSRA) & (1<<RXC));
+	return UDR;
 }
 
 int main(void)
 {
-	PORTD = 0x01;
 	LCD_init();
-	uart_init();
-	LCD_string("a");
+	UART_init();
+	LCD_string("ECHO");
 	while(1)
 	{
-		uart_transmit('a');
+		volatile char c = UART_get_char();
+		UART_send(c);
 	}
-	
 	return 0;
 }
