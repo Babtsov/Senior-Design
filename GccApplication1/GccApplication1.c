@@ -40,7 +40,7 @@ long adc_read(void);
 int main(void)
 {
     lcd_init(); 
-	lcd_string("commit");	
+	lcd_string("Eminem!!!!");	
 	while(1)
 	{
 	}
@@ -51,27 +51,12 @@ int main(void)
 void lcd_init(void)
 {
 	lcdDdr |= (1 << lcdD7Bit) | (1 << lcdD6Bit) | (1 << lcdD5Bit) | (1 << lcdD4Bit) | (1 << lcdEBit) | (1 << lcdRSBit);
-    _delay_ms(100);                                
-    lcdPort &= ~(1 << lcdRSBit);
-    lcdPort &= ~(1 << lcdEBit);
-    lcd_write(reset);                 
-    _delay_ms(8);
-    lcd_write(reset);                 
-    _delay_us(200);
-    lcd_write(reset);                 
-    _delay_us(200);                                 
-    lcd_write(bit4Mode);
-    _delay_us(50);
+    lcd_instruction(reset);                 
     lcd_instruction(bit4Mode);
-    _delay_us(50);
-    lcd_instruction(off);
-    _delay_us(50);                                  
+    lcd_instruction(off);                               
     lcd_instruction(clear);
-    _delay_ms(3);
     lcd_instruction(entryMode);
-    _delay_us(40);
     lcd_instruction(on);
-    _delay_us(50);
 }
 
 
@@ -80,7 +65,6 @@ void lcd_string(char string[])
     for (int i = 0; string[i] != 0; i++)
     {
         lcd_char(string[i]);
-        _delay_us(50);
     }
 }
 
@@ -90,16 +74,20 @@ void lcd_char(uint8_t data)
     lcdPort |= (1 << lcdRSBit);                 // RS high
     lcdPort &= ~(1 << lcdEBit);                // E low
     lcd_write(data);                          // write the upper four bits of data
+	_delay_us(2);
     lcd_write(data << 4);                    // write the lower 4 bits of data
+	_delay_us(2);
 }
 
 
 void lcd_instruction(uint8_t instruction)
 {
-    lcdPort &= ~(1 << lcdRSBit);                // RS low
-    lcdPort &= ~(1 << lcdEBit);                // E low
-    lcd_write(instruction);                   // write the upper 4 bits of data
-    lcd_write(instruction << 4);             // write the lower 4 bits of data
+    lcdPort &= ~(1 << lcdRSBit); 
+    lcdPort &= ~(1 << lcdEBit); 
+    lcd_write(instruction); 
+	_delay_us(2);
+    lcd_write(instruction << 4);
+	_delay_ms(2);
 }
 
 void lcd_write(uint8_t byte)
