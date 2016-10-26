@@ -5,10 +5,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define LCD_DIR		DDRD 
-#define LCD_PORT	PORTD          
-#define LCD_E		PORTD2
-#define LCD_RS		PORTD1
+#define LCD_DIR		DDRA
+#define LCD_PORT	PORTA
+#define LCD_E		PORTA2
+#define LCD_RS		PORTA1
 
 #define lineOne			0x00                // Line 1
 #define lineTwo			0x40                // Line 2
@@ -29,9 +29,10 @@ void LCD_init(void);
 
 void LCD_init(void)
 {
-	LCD_DIR |= 0x7E; // Data: PORTD6..PORTD3, E: PORTD2, RS: PORTD1 
+	LCD_DIR |= 0x7E; // Data: PORTD6..PORTD3, E: PORTD2, RS: PORTD1
     LCD_command(reset);                 
     LCD_command(bit4Mode);
+	LCD_command(clear);
     LCD_command(off);                               
     LCD_command(clear);
     LCD_command(entryMode);
@@ -74,12 +75,35 @@ void LCD_send_upper_nibble(uint8_t byte)
 	LCD_PORT &= ~(1 << LCD_E);
 }
 
+// define some macros
+#define BAUD 9600                                   // define baud
+#define BAUDRATE 25            // set baud rate value for UBRR
+
+// function to initialize UART
+void uart_init (void)
+{
+	UBRRH = (BAUDRATE>>8);                      // shift the register right by 8 bits
+	UBRRL = BAUDRATE;                           // set baud rate
+	UCSRB|= (1<<TXEN)|(1<<RXEN);                // enable receiver and transmitter
+	UCSRC|= (1<<URSEL)|(1<<UCSZ0)|(1<<UCSZ1);   // 8bit data format
+}
+
+// function to send data
+void uart_transmit (unsigned char data)
+{
+	while (!( UCSRA & (1<<UDRE)));                // wait while register is free
+	UDR = data;                                   // load data in the register
+}
+
 int main(void)
 {
+	PORTD = 0x01;
 	LCD_init();
-	LCD_string("Benjamin");
+	uart_init();
+	LCD_string("a");
 	while(1)
 	{
+		uart_transmit('a');
 	}
 	
 	return 0;
