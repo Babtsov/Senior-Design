@@ -27,7 +27,7 @@ void LCD_init(void);
 
 void LCD_init(void) {
     LCD_DIR |= 0x7E; // Data: PORTD6..PORTD3, E: PORTD2, RS: PORTD1
-    _delay_ms(100); // wait until LCD
+    _delay_ms(150); // wait until LCD's voltage is high enough
     LCD_command(0x33);
     LCD_command(0x32);
     LCD_command(0x2C);
@@ -109,7 +109,7 @@ inline void release_creader_buff(void) {
 
 ISR(USART_RXC_vect) {
     char c = UART_get_char();
-    UART_send(c);
+    UART_send(c); // debug:: echo
     if (creader_buff.locked) {
         return;
     }
@@ -160,8 +160,10 @@ int main(void) {
     UART_init();
     sei();
     scan_cards();
-    LCD_command(clear);
     while(1) {
+        LCD_command(clear);
+        LCD_command(home);
+        LCD_string("Scan a card:");
         waitfor_creader_buff();
         LCD_command(clear);
         LCD_command(home);
@@ -173,8 +175,9 @@ int main(void) {
             LCD_command(setCursor | lineTwo);
             LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
         } else {
-            LCD_string("Unregistered Card.");
+            LCD_string("Unknown Card.");
         }
+        _delay_ms(2000);
         release_creader_buff();
     }
     return 0;
