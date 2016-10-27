@@ -27,6 +27,7 @@ void LCD_init(void);
 
 void LCD_init(void) {
     LCD_DIR |= 0x7E; // Data: PORTD6..PORTD3, E: PORTD2, RS: PORTD1
+    _delay_ms(100); // wait until LCD
     LCD_command(0x33);
     LCD_command(0x32);
     LCD_command(0x2C);
@@ -60,7 +61,7 @@ void LCD_command(uint8_t cmd) {
     LCD_send_upper_nibble(cmd); 
     _delay_us(10);
     LCD_send_upper_nibble(cmd << 4);
-    _delay_ms(10);
+    _delay_ms(5);
 }
 
 void LCD_send_upper_nibble(uint8_t byte) {
