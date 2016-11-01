@@ -3,9 +3,26 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 #include <stdbool.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
+
+#define CARD_COUNT          2
+#define CREADER_BUFF_SIZE   12
+#define BAUDRATE            25      // baud rate: 2400 (see pg. 168)
+#define LCD_DIR             DDRA
+#define LCD_PORT            PORTA
+#define LCD_E               PORTA2
+#define LCD_RS              PORTA1
+
+struct {
+    char id[CREADER_BUFF_SIZE + 1];
+    volatile uint16_t timeout;
+} cards[CARD_COUNT];
+
+struct {
+    volatile char ID_str[CREADER_BUFF_SIZE + 1]; //extra char for null terminator
+    volatile uint8_t index; // pointer to an unoccupied slot
+    volatile bool locked; // buffer is locked from modifications by the ISR
+} creader_buff;
 
 /************************************************************************/
 /* LCD Functions                                                        */
@@ -20,11 +37,6 @@
 #define moveRight   0x14
 #define cursorOn    0x0E
 #define cursorOff   0x0C
-
-#define LCD_DIR     DDRA
-#define LCD_PORT    PORTA
-#define LCD_E       PORTA2
-#define LCD_RS      PORTA1
 
 void LCD_init(void);
 void LCD_send_upper_nibble(uint8_t);
@@ -93,8 +105,6 @@ void LCD_uint(uint16_t num) {
 /************************************************************************/
 /* UART Functions                                                       */
 /************************************************************************/
-#define BAUDRATE 25 // baud rate: 2400 (see pg. 168)
-
 void UART_init(void) {
     PORTD |= 0x01; // enable transmitter
     UBRRH = (BAUDRATE>>8);
@@ -111,23 +121,12 @@ unsigned char UART_get_char(void) {
     while(~(UCSRA) & (1<<RXC));
     return UDR;
 }
-
-#define CREADER_BUFF_SIZE 12 // card reader buffer size
-struct {
-    volatile char ID_str[CREADER_BUFF_SIZE + 1]; //extra char for null terminator
-    volatile uint8_t index; // pointer to an unoccupied slot
-    volatile bool locked; // buffer is locked from modifications by the ISR
-} creader_buff;
-
-
 inline void waitfor_creader_buff(void) {
     while (!creader_buff.locked); // wait until buffer is unlocked for consumption
 }
-
 inline void release_creader_buff(void) {
     creader_buff.locked = false;
 }
-
 ISR(USART_RXC_vect) {
     char c = UART_get_char();
     UART_send(c); // debug:: echo
@@ -172,15 +171,24 @@ button_t get_button(void) {
 }
 
 /************************************************************************/
+/* 1 Second Timer Functions                                             */
+/************************************************************************/
+void TIMER1SEC_init(void) {
+    TCCR1B = (1 << CS12 | 1 << WGM12);
+    OCR1A = 15625 - 1;
+    TIMSK = 1 << OCIE1A;
+}
+ISR(TIMER1_COMPA_vect) {
+    for (uint8_t i = 0; i < CARD_COUNT; i++) {
+        if (cards[i].timeout > 0) {
+            cards[i].timeout--;
+        }
+    }
+}
+
+/************************************************************************/
 /* Main Program Functions                                               */
 /************************************************************************/
-#define CARD_COUNT 2
-
-struct card {
-    char id[CREADER_BUFF_SIZE + 1];
-    uint16_t timeout;
-} cards[CARD_COUNT];
-
 void set_card_timeout(int card_index) {
     LCD_command(clear);
     LCD_command(cursorOn);
@@ -250,6 +258,7 @@ int find_card(char * str) {
 int main(void) {
     LCD_init();
     UART_init();
+    TIMER1SEC_init();
     sei();
     populate_cards_info();
     while(1) {
