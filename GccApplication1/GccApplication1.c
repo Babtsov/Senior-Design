@@ -18,7 +18,7 @@
 #define home        0x02
 #define moveLeft    0x10
 #define moveRight   0x14
-#define cursorOn    0x0F
+#define cursorOn    0x0E
 #define cursorOff   0x0C
 
 #define LCD_DIR     DDRA
@@ -60,6 +60,21 @@ void LCD_char(uint8_t data) {
     _delay_us(10);
     LCD_send_upper_nibble(data << 4);
     _delay_us(10);
+}
+void LCD_int(uint16_t num) {
+    if (num == 0) {
+        LCD_char('0');
+        return;
+    }
+    uint16_t reversed = 0, digits = 0;
+    for (uint16_t original = num; original > 0; original /= 10) {
+        reversed = 10 * reversed + original % 10;
+        digits++;
+    }
+    for (uint8_t i = 0; i < digits; i++) {
+        LCD_char(reversed % 10 + '0');
+        reversed /= 10;
+    }
 }
 
 void LCD_command(uint8_t cmd) {
@@ -158,21 +173,70 @@ button_t get_button(void) {
 
 struct card {
     char id[CREADER_BUFF_SIZE + 1];
+    uint16_t timeout;
 } cards[2];
 
-void scan_cards(void) {
+void set_card_timeout(int index) {
+    LCD_command(home);
+    LCD_command(clear);
+    LCD_command(cursorOn);
+    LCD_string("Time for card ");
+    LCD_int(index + 1);
+    LCD_char(':');
+    LCD_command(setCursor | lineTwo);
+    LCD_string("00:00 (MM/SS)");
+    LCD_command(setCursor | lineTwo);
+    uint8_t cursor_index = 0;
+    int time[5] = {0}; // time[2] is a placeholder (because it corresponds to ':')
+    button_t button = NONE;
+    while (cursor_index <= 4) {
+        button = get_button();
+        if (button == LEFT && cursor_index > 0) {
+            LCD_command(moveLeft);
+            cursor_index--;
+            if (cursor_index == 2) { // don't let cursor stand on ':'
+                LCD_command(moveLeft);
+                cursor_index--;
+            }                
+        } else if (button == RIGHT) {
+            do {
+                LCD_command(moveRight);
+                cursor_index++;
+            } while(cursor_index == 2); // don't let cursor stand on ':'           
+        } else if (button == UP || button == DOWN) {
+            int digit = time[cursor_index];
+            int inc = (button == UP) ? 1 : -1;
+            if (cursor_index == 0 || cursor_index == 3) {
+                time[cursor_index] = (digit + inc < 0)? 5 : (digit + inc) % 6; // digit 0~5
+            } else if (cursor_index == 1 || cursor_index == 4) {
+                time[cursor_index] = (digit + inc < 0)? 9 : (digit + inc) % 10; // digit 0~9
+            }
+            LCD_int(time[cursor_index]);
+            LCD_command(moveLeft); // stay on the same digit
+        }
+    }
+    cards[index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
+    LCD_command(cursorOff);
+}
+
+void set_card_id(int index) {
+    LCD_command(home);
+    LCD_command(clear);
+    LCD_string("Scan card ");
+    LCD_char(index + '1');
+    LCD_string(":");
+    waitfor_creader_buff();
+    strcpy(cards[index].id, (char *)creader_buff.ID_str);
+    LCD_command(setCursor | lineTwo);
+    LCD_substring(cards[index].id, 1, CREADER_BUFF_SIZE - 1);
+    while(get_button() != RIGHT);
+    release_creader_buff();
+}
+
+void cards_init(void) {
     for (int i = 0; i < 2; i++) {
-        LCD_command(home);
-        LCD_command(clear);
-        LCD_string("Scan card ");
-        LCD_char(i + '1');
-        LCD_string(":");
-        waitfor_creader_buff();
-        strcpy(cards[i].id, (char *)creader_buff.ID_str);
-        LCD_command(setCursor | lineTwo);
-        LCD_substring(cards[i].id, 1, CREADER_BUFF_SIZE - 1);
-        while(get_button() != RIGHT);
-        release_creader_buff();
+        set_card_id(i);
+        set_card_timeout(i);
     }
 }
 
@@ -185,29 +249,11 @@ int find_card(char * str) {
     return -1;
 }
 
-void test_buttons(void) {
-    LCD_command(clear);
-    LCD_command(home);
-    LCD_command(cursorOn);
-    LCD_string("Test!");
-    while(1) {
-        button_t pressed = get_button();
-        switch(pressed) {
-            case LEFT: LCD_command(moveLeft); break;
-            case RIGHT: LCD_command(moveRight); break;
-            case UP: LCD_string("U"); break;
-            case DOWN: LCD_string("D"); break;
-            case NONE: break;
-            default: LCD_string("Invalid");
-        }
-    }
-}
-
 int main(void) {
     LCD_init();
     UART_init();
     sei();
-    scan_cards();
+    cards_init();
     while(1) {
         LCD_command(clear);
         LCD_command(home);
@@ -225,6 +271,13 @@ int main(void) {
         } else {
             LCD_string("Unknown Card.");
         }
+        _delay_ms(1000);
+        LCD_command(clear);
+        LCD_command(home);
+        LCD_string("time left:");
+        LCD_command(setCursor | lineTwo);
+        LCD_int(cards[card_index].timeout);
+        LCD_string(" seconds.");
         _delay_ms(2000);
         release_creader_buff();
     }
