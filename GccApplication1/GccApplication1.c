@@ -174,8 +174,8 @@ button_t get_button(void) {
 /* 1 Second Timer Functions                                             */
 /************************************************************************/
 void TIMER1SEC_init(void) {
-    TCCR1B = (1 << CS12 | 1 << WGM12);
-    OCR1A = 15625 - 1;
+    TCCR1B = (1 << CS11 | 1 << CS10  | 1 << WGM12); // divide by 64 (see pg. 113)
+    OCR1A = 15624; // TOP value
     TIMSK = 1 << OCIE1A;
 }
 ISR(TIMER1_COMPA_vect) {
