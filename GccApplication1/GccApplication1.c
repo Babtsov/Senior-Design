@@ -7,16 +7,24 @@
 #include <stdio.h>
 #include <string.h>
 
+/************************************************************************/
+/* LCD Configurations                                                   */
+/* For LCD commands, see: http://www.dinceraydin.com/lcd/commands.htm   */
+/************************************************************************/
+#define setCursor   0x80
+#define lineOne     0x00
+#define lineTwo     0x40
+#define clear       0x01
+#define home        0x02
+#define moveLeft    0x10
+#define moveRight   0x14
+#define cursorOn    0x0F
+#define cursorOff   0x0C
+
 #define LCD_DIR     DDRA
 #define LCD_PORT    PORTA
 #define LCD_E       PORTA2
 #define LCD_RS      PORTA1
-
-#define lineOne     0x00
-#define lineTwo     0x40
-#define clear       0b00000001
-#define home        0b00000010
-#define setCursor   0b10000000
 
 void LCD_send_upper_nibble(uint8_t);
 void LCD_command(uint8_t);
@@ -32,7 +40,6 @@ void LCD_init(void) {
     LCD_command(0x32);
     LCD_command(0x2C);
     LCD_command(0x0C);
-    LCD_command(0x01);
 }
 
 void LCD_string(char string[]) {
@@ -70,6 +77,8 @@ void LCD_send_upper_nibble(uint8_t byte) {
     LCD_PORT |= (1 << LCD_E);
     LCD_PORT &= ~(1 << LCD_E);
 }
+
+
 
 #define BAUDRATE 25 // baud rate: 2400 (see pg. 168)
 void UART_init(void) {
@@ -126,6 +135,27 @@ ISR(USART_RXC_vect) {
     }
 }
 
+typedef enum {NONE, LEFT, RIGHT, UP, DOWN, INVALID} button_t;
+
+button_t get_button(void) {
+    button_t pressed;
+    if (!(PINB & 0x0F)) {
+        return NONE;
+    } else if (PINB & (1<<PB0)) {
+        pressed = RIGHT;
+    } else if (PINB & (1<<PB1)) {
+        pressed = LEFT;
+    } else if (PINB & (1<<PB2)) {
+        pressed = UP;
+    } else if (PINB & (1<<PB3)) {
+        pressed = DOWN;
+    } else {
+        pressed = INVALID;
+    }
+    _delay_ms(200);
+    return pressed;
+}
+
 struct card {
     char id[CREADER_BUFF_SIZE + 1];
 } cards[2];
@@ -141,7 +171,7 @@ void scan_cards(void) {
         strcpy(cards[i].id, (char *)creader_buff.ID_str);
         LCD_command(setCursor | lineTwo);
         LCD_substring(cards[i].id, 1, CREADER_BUFF_SIZE - 1);
-        while (!(PIND & (1<<PD2))); // wait until user presses button
+        while(get_button() != RIGHT);
         release_creader_buff();
     }
 }
@@ -153,6 +183,24 @@ int find_card(char * str) {
         }
     }
     return -1;
+}
+
+void test_buttons(void) {
+    LCD_command(clear);
+    LCD_command(home);
+    LCD_command(cursorOn);
+    LCD_string("Test!");
+    while(1) {
+        button_t pressed = get_button();
+        switch(pressed) {
+            case LEFT: LCD_command(moveLeft); break;
+            case RIGHT: LCD_command(moveRight); break;
+            case UP: LCD_string("U"); break;
+            case DOWN: LCD_string("D"); break;
+            case NONE: break;
+            default: LCD_string("Invalid");
+        }
+    }
 }
 
 int main(void) {
