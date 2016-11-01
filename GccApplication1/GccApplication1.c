@@ -8,7 +8,7 @@
 #include <string.h>
 
 /************************************************************************/
-/* LCD Configurations                                                   */
+/* LCD Functions                                                        */
 /* For LCD commands, see: http://www.dinceraydin.com/lcd/commands.htm   */
 /************************************************************************/
 #define setCursor   0x80
@@ -26,12 +26,13 @@
 #define LCD_E       PORTA2
 #define LCD_RS      PORTA1
 
+void LCD_init(void);
 void LCD_send_upper_nibble(uint8_t);
 void LCD_command(uint8_t);
 void LCD_char(uint8_t);
 void LCD_string(char[]);
 void LCD_substring(char[],int,int);
-void LCD_init(void);
+void LCD_uint(uint16_t);
 
 void LCD_init(void) {
     LCD_DIR |= 0x7E; // Data: PORTD6..PORTD3, E: PORTD2, RS: PORTD1
@@ -41,7 +42,28 @@ void LCD_init(void) {
     LCD_command(0x2C);
     LCD_command(0x0C);
 }
-
+void LCD_send_upper_nibble(uint8_t byte) {
+    LCD_PORT &= ~0x78; // Save the data of the LCD port (& set nibble to 0)
+    LCD_PORT |= byte >> 1 & 0x78; // set the nibble (requires shifting)
+    LCD_PORT |= (1 << LCD_E);
+    LCD_PORT &= ~(1 << LCD_E);
+}
+void LCD_command(uint8_t cmd) {
+    LCD_PORT &= ~(1 << LCD_RS);
+    LCD_PORT &= ~(1 << LCD_E);
+    LCD_send_upper_nibble(cmd);
+    _delay_us(10);
+    LCD_send_upper_nibble(cmd << 4);
+    _delay_ms(5);
+}
+void LCD_char(uint8_t data) {
+    LCD_PORT |= (1 << LCD_RS);
+    LCD_PORT &= ~(1 << LCD_E);
+    LCD_send_upper_nibble(data);
+    _delay_us(10);
+    LCD_send_upper_nibble(data << 4);
+    _delay_us(10);
+}
 void LCD_string(char string[]) {
     for (int i = 0; string[i] != 0; i++) {
         LCD_char(string[i]);
@@ -52,16 +74,7 @@ void LCD_substring(char string[], int begin, int end) {
         LCD_char(string[i]);
     }
 }
-
-void LCD_char(uint8_t data) {
-    LCD_PORT |= (1 << LCD_RS);
-    LCD_PORT &= ~(1 << LCD_E);
-    LCD_send_upper_nibble(data);
-    _delay_us(10);
-    LCD_send_upper_nibble(data << 4);
-    _delay_us(10);
-}
-void LCD_int(uint16_t num) {
+void LCD_uint(uint16_t num) {
     if (num == 0) {
         LCD_char('0');
         return;
@@ -77,25 +90,11 @@ void LCD_int(uint16_t num) {
     }
 }
 
-void LCD_command(uint8_t cmd) {
-    LCD_PORT &= ~(1 << LCD_RS); 
-    LCD_PORT &= ~(1 << LCD_E); 
-    LCD_send_upper_nibble(cmd); 
-    _delay_us(10);
-    LCD_send_upper_nibble(cmd << 4);
-    _delay_ms(5);
-}
-
-void LCD_send_upper_nibble(uint8_t byte) {
-    LCD_PORT &= ~0x78; // Save the data of the LCD port (& set nibble to 0)
-    LCD_PORT |= byte >> 1 & 0x78; // set the nibble (requires shifting)
-    LCD_PORT |= (1 << LCD_E);
-    LCD_PORT &= ~(1 << LCD_E);
-}
-
-
-
+/************************************************************************/
+/* UART Functions                                                       */
+/************************************************************************/
 #define BAUDRATE 25 // baud rate: 2400 (see pg. 168)
+
 void UART_init(void) {
     PORTD |= 0x01; // enable transmitter
     UBRRH = (BAUDRATE>>8);
@@ -104,14 +103,12 @@ void UART_init(void) {
     UCSRC = (1<<URSEL) | (1<<UCSZ0) | (1<<UCSZ1);   // 8bit data format 1 parity
     UCSRB |= (1 << RXCIE); // enable interrupt on receive
 }
-
 void UART_send(unsigned char data) {
     while (!( UCSRA & (1<<UDRE)));
     UDR = data;
 }
-
 unsigned char UART_get_char(void) {
-    while(!(UCSRA) & (1<<RXC));
+    while(~(UCSRA) & (1<<RXC));
     return UDR;
 }
 
@@ -150,6 +147,9 @@ ISR(USART_RXC_vect) {
     }
 }
 
+/************************************************************************/
+/* Buttons Functions                                                    */
+/************************************************************************/
 typedef enum {NONE, LEFT, RIGHT, UP, DOWN, INVALID} button_t;
 
 button_t get_button(void) {
@@ -171,17 +171,21 @@ button_t get_button(void) {
     return pressed;
 }
 
+/************************************************************************/
+/* Main Program Functions                                               */
+/************************************************************************/
+#define CARD_COUNT 2
+
 struct card {
     char id[CREADER_BUFF_SIZE + 1];
     uint16_t timeout;
-} cards[2];
+} cards[CARD_COUNT];
 
-void set_card_timeout(int index) {
-    LCD_command(home);
+void set_card_timeout(int card_index) {
     LCD_command(clear);
     LCD_command(cursorOn);
     LCD_string("Time for card ");
-    LCD_int(index + 1);
+    LCD_uint(card_index + 1);
     LCD_char(':');
     LCD_command(setCursor | lineTwo);
     LCD_string("00:00 (MM/SS)");
@@ -192,12 +196,10 @@ void set_card_timeout(int index) {
     while (cursor_index <= 4) {
         button = get_button();
         if (button == LEFT && cursor_index > 0) {
-            LCD_command(moveLeft);
-            cursor_index--;
-            if (cursor_index == 2) { // don't let cursor stand on ':'
+            do {
                 LCD_command(moveLeft);
                 cursor_index--;
-            }                
+            } while(cursor_index == 2); // don't let cursor stand on ':'                
         } else if (button == RIGHT) {
             do {
                 LCD_command(moveRight);
@@ -211,16 +213,14 @@ void set_card_timeout(int index) {
             } else if (cursor_index == 1 || cursor_index == 4) {
                 time[cursor_index] = (digit + inc < 0)? 9 : (digit + inc) % 10; // digit 0~9
             }
-            LCD_int(time[cursor_index]);
+            LCD_uint(time[cursor_index]);
             LCD_command(moveLeft); // stay on the same digit
         }
     }
-    cards[index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
+    cards[card_index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
     LCD_command(cursorOff);
 }
-
 void set_card_id(int index) {
-    LCD_command(home);
     LCD_command(clear);
     LCD_string("Scan card ");
     LCD_char(index + '1');
@@ -232,16 +232,14 @@ void set_card_id(int index) {
     while(get_button() != RIGHT);
     release_creader_buff();
 }
-
-void cards_init(void) {
-    for (int i = 0; i < 2; i++) {
+void populate_cards_info(void) {
+    for (int i = 0; i < CARD_COUNT; i++) {
         set_card_id(i);
         set_card_timeout(i);
     }
 }
-
 int find_card(char * str) {
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < CARD_COUNT; i++) {
         if (strcmp(cards[i].id, str) == 0) {
             return i;
         }
@@ -253,14 +251,12 @@ int main(void) {
     LCD_init();
     UART_init();
     sei();
-    cards_init();
+    populate_cards_info();
     while(1) {
         LCD_command(clear);
-        LCD_command(home);
         LCD_string("Scan a card:");
         waitfor_creader_buff();
         LCD_command(clear);
-        LCD_command(home);
         int card_index = find_card((char *)creader_buff.ID_str);
         if (card_index >= 0) {
             LCD_string("card ");
@@ -268,16 +264,15 @@ int main(void) {
             LCD_string(" detected!");
             LCD_command(setCursor | lineTwo);
             LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
+            _delay_ms(1000);
+            LCD_command(clear);
+            LCD_string("time left:");
+            LCD_command(setCursor | lineTwo);
+            LCD_uint(cards[card_index].timeout);
+            LCD_string(" seconds.");
         } else {
             LCD_string("Unknown Card.");
         }
-        _delay_ms(1000);
-        LCD_command(clear);
-        LCD_command(home);
-        LCD_string("time left:");
-        LCD_command(setCursor | lineTwo);
-        LCD_int(cards[card_index].timeout);
-        LCD_string(" seconds.");
         _delay_ms(2000);
         release_creader_buff();
     }
