@@ -215,7 +215,7 @@ bool set_card_timeout(int card_index) {
     LCD_string(format_card_timeout(card_index));
     LCD_string(" (MM/SS)");
     LCD_command(setCursor | lineTwo);
-    static uint8_t cursor_index = 0;
+    uint8_t cursor_index = 0;
     uint8_t min = cards[card_index].timeout / 60;
     uint8_t sec = cards[card_index].timeout % 60;
     int time[5] = {min/10, min%10, 0, sec/10, sec%10}; // time[2] is a placeholder (corresponds to ':')
@@ -264,20 +264,18 @@ bool set_card_id(int index) {
     LCD_string("Scan card ");
     LCD_char(index + '1');
     LCD_string(":");
-    bool setup_complete = false, scanned_something = false;
+    LCD_command(setCursor | lineTwo);
+    LCD_substring(cards[index].id, 1, CREADER_BUFF_SIZE - 1);
+    bool setup_complete = false;
     for(;;) {
         button_t pressed = get_button();
         if (isready_creader_buff()) { // if something is available, show it to the screen
             LCD_command(setCursor | lineTwo);
             LCD_substring((char *)creader_buff.ID_str, 1, CREADER_BUFF_SIZE - 1);
-            scanned_something = true; // mark it so we know we scanned SOMETHING
             release_creader_buff();
-        } else if (scanned_something && (pressed == OK || pressed == RIGHT)) { // if something got scanned and user confirmed, save it!
+        } else if (pressed == OK || pressed == RIGHT) { // if something got scanned and user confirmed, save it!
             strcpy(cards[index].id, (char *)creader_buff.ID_str);
-            LCD_command(setCursor | lineTwo);
-            LCD_string("RFID Saved!");
             setup_complete = true;
-            _delay_ms(1500);
             break;
         } else if (pressed == LEFT) {
             setup_complete = false;
