@@ -194,6 +194,17 @@ ISR(TIMER1_COMPA_vect) {
 /************************************************************************/
 /* Main Program Functions                                               */
 /************************************************************************/
+char * format_card_timeout(int card_index) {
+    static char time_str[6]= {'0', '0', ':', '0', '0', 0};
+    uint8_t minutes = cards[card_index].timeout / 60;
+    uint8_t seconds = cards[card_index].timeout % 60;
+    time_str[0] = (minutes / 10) + '0';
+    time_str[1] = (minutes % 10) + '0';
+    time_str[3] = (seconds / 10) + '0';
+    time_str[4] = (seconds % 10) + '0';
+    return time_str;
+}
+
 bool set_card_timeout(int card_index) {
     LCD_command(clear);
     LCD_command(cursorOn);
@@ -201,10 +212,13 @@ bool set_card_timeout(int card_index) {
     LCD_uint(card_index + 1);
     LCD_char(':');
     LCD_command(setCursor | lineTwo);
-    LCD_string("00:00 (MM/SS)");
+    LCD_string(format_card_timeout(card_index));
+    LCD_string(" (MM/SS)");
     LCD_command(setCursor | lineTwo);
-    uint8_t cursor_index = 0;
-    int time[5] = {0}; // time[2] is a placeholder (because it corresponds to ':')
+    static uint8_t cursor_index = 0;
+    uint8_t min = cards[card_index].timeout / 60;
+    uint8_t sec = cards[card_index].timeout % 60;
+    int time[5] = {min/10, min%10, 0, sec/10, sec%10}; // time[2] is a placeholder (corresponds to ':')
     bool setup_completed = false;
     for(;;) {
         button_t button = get_button();
@@ -234,14 +248,14 @@ bool set_card_timeout(int card_index) {
             } else if (cursor_index == 1 || cursor_index == 4) {
                 time[cursor_index] = (digit + inc < 0)? 9 : (digit + inc) % 10; // digit 0~9
             }
-            LCD_uint(time[cursor_index]);
+            LCD_char(time[cursor_index] + '0');
             LCD_command(moveLeft); // stay on the same digit
-        } else if (button == OK) {
+        } else if (button == OK) { // setup is finished
             setup_completed = true;
             break;
         }
     }
-    if (setup_completed) cards[card_index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
+    cards[card_index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
     LCD_command(cursorOff);
     return setup_completed;
 }
@@ -306,9 +320,9 @@ int main(void) {
     LCD_init();
     welcome_screen();
     UART_init();
-    TIMER1SEC_init();
     sei();
     populate_cards_info();
+    TIMER1SEC_init();
     while(1) {
         LCD_command(clear);
         LCD_string("Scan a card:");
@@ -325,8 +339,8 @@ int main(void) {
             LCD_command(clear);
             LCD_string("time left:");
             LCD_command(setCursor | lineTwo);
-            LCD_uint(cards[card_index].timeout);
-            LCD_string(" seconds.");
+            LCD_string(format_card_timeout(card_index));
+            LCD_string(" (MM/SS)");
         } else {
             LCD_string("Unknown Card.");
         }
