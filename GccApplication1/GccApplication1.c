@@ -300,11 +300,14 @@ int find_card(char * str) {
 void welcome_screen(void) {
     LCD_command(clear);
     LCD_string(" PharmaTracker");
+    _delay_ms(2000);
+}
+int setup_screen(void) {
+    LCD_command(clear);
+    LCD_string("  Setup Wizard");
     LCD_command(setCursor | lineTwo);
     LCD_string("Press any key...");
     while(get_button() == NONE);
-}
-int setup_screen(void) {
     int counter = 0;
     for (;;) {
         if (counter == 2 * CARD_COUNT) break; // # of config stages times # of cards
@@ -369,7 +372,9 @@ int main_screen(int screen_index) {
             return 100; // go to setup screen
         }
         LCD_command(home);
-        LCD_string("Scan a card:");
+        LCD_string("Scan a card...");
+        LCD_command(setCursor | lineTwo);
+        LCD_string("or press a key!");
         if (isready_creader_buff()) {
             LCD_command(clear);
             int card_index = find_card((char *)creader_buff.ID_str);
