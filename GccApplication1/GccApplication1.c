@@ -273,7 +273,7 @@ bool set_card_id(int index) {
             LCD_command(setCursor | lineTwo);
             LCD_substring((char *)creader_buff.ID_str, 1, CREADER_BUFF_SIZE - 1);
             release_creader_buff();
-        } else if (pressed == OK || pressed == RIGHT) { // if something got scanned and user confirmed, save it!
+        } else if (pressed == OK || pressed == RIGHT) {
             strcpy(cards[index].id, (char *)creader_buff.ID_str);
             setup_complete = true;
             break;
@@ -314,6 +314,75 @@ void welcome_screen(void) {
     while(get_button() == NONE);
 }
 
+int clocks_screen(void) {
+    LCD_command(clear);
+    for(;;) {
+        button_t pressed = get_button();
+        if (pressed == LEFT) {
+            return -1;
+        } else if (pressed == RIGHT) {
+            return 1;
+        }
+        LCD_command(home); 
+        LCD_string("1: ");
+        LCD_string(format_card_timeout(0));
+        LCD_string("(MM/SS)");
+        LCD_command(setCursor | lineTwo);
+        LCD_string("2: ");
+        LCD_string("(MM/SS)");
+        LCD_string(format_card_timeout(1));
+    }
+    return 0; // execution shouldn't reach this point
+}
+
+int ids_screen(void) {
+    LCD_command(clear);
+    for(;;) {
+        button_t pressed = get_button();
+        if (pressed == LEFT) {
+            return -1;
+        } else if (pressed == RIGHT) {
+            return 1;
+        }
+        LCD_command(home);
+        LCD_string("1: ");
+        LCD_substring(cards[0].id, 1, CREADER_BUFF_SIZE - 1);
+        LCD_command(setCursor | lineTwo);
+        LCD_string("2: ");
+        LCD_substring(cards[1].id, 1, CREADER_BUFF_SIZE - 1);
+    }
+    return 0; // execution shouldn't reach this point
+}
+int default_screen(void) {
+    LCD_command(clear);
+    for(;;) {
+        button_t pressed = get_button();
+        if (pressed == LEFT) {
+            return -1;
+        } else if (pressed == RIGHT) {
+            return 1;
+        }
+        LCD_command(home);
+        LCD_string("Scan a card:");
+        if (isready_creader_buff()) {
+            LCD_command(clear);
+            int card_index = find_card((char *)creader_buff.ID_str);
+            if (card_index >= 0) {
+                LCD_string("card ");
+                LCD_char(card_index + '1');
+                LCD_string(" detected!");
+                LCD_command(setCursor | lineTwo);
+                LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
+            } else {
+                LCD_string("Unknown Card.");
+            }
+            _delay_ms(2000);
+            LCD_command(clear);
+            release_creader_buff();
+        }        
+    }
+    return 0; // execution shouldn't reach this point
+}    
 int main(void) {
     LCD_init();
     welcome_screen();
@@ -321,29 +390,13 @@ int main(void) {
     sei();
     populate_cards_info();
     TIMER1SEC_init();
+    int selector = 0;
     while(1) {
-        LCD_command(clear);
-        LCD_string("Scan a card:");
-        waitfor_creader_buff();
-        LCD_command(clear);
-        int card_index = find_card((char *)creader_buff.ID_str);
-        if (card_index >= 0) {
-            LCD_string("card ");
-            LCD_char(card_index + '1');
-            LCD_string(" detected!");
-            LCD_command(setCursor | lineTwo);
-            LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
-            _delay_ms(1000);
-            LCD_command(clear);
-            LCD_string("time left:");
-            LCD_command(setCursor | lineTwo);
-            LCD_string(format_card_timeout(card_index));
-            LCD_string(" (MM/SS)");
-        } else {
-            LCD_string("Unknown Card.");
-        }
-        _delay_ms(2000);
-        release_creader_buff();
+        if (selector < 0) selector = 2;
+        else if (selector == 0) selector += default_screen();
+        else if (selector == 1) selector += clocks_screen();
+        else if (selector == 2) selector += ids_screen();
+        else selector = 0;
     }
-    return 0;
+    return 0; // execution shouldn't reach this point
 }
