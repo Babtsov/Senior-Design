@@ -284,20 +284,7 @@ bool set_card_id(int index) {
     }
     return setup_complete;
 }
-void populate_cards_info(void) {
-    int counter = 0;
-    for (;;) {
-        if (counter == 2 * CARD_COUNT) break; // # of config stages times # of cards
-        bool success;
-        if (counter % 2 == 0) {
-            success = set_card_id(counter / 2); 
-        } else {
-            success = set_card_timeout(counter / 2);
-        }
-        counter = (success) ? counter + 1 : counter - 1;
-        if (counter < 0) counter = 0;
-    }
-}
+
 int find_card(char * str) {
     for (int i = 0; i < CARD_COUNT; i++) {
         if (strcmp(cards[i].id, str) == 0) {
@@ -306,6 +293,10 @@ int find_card(char * str) {
     }
     return -1;
 }
+
+/************************************************************************/
+/* UI screen functions                                                 */
+/************************************************************************/
 void welcome_screen(void) {
     LCD_command(clear);
     LCD_string(" PharmaTracker");
@@ -313,36 +304,49 @@ void welcome_screen(void) {
     LCD_string("Press any key...");
     while(get_button() == NONE);
 }
-
-int clocks_screen(void) {
+int setup_screen(void) {
+    int counter = 0;
+    for (;;) {
+        if (counter == 2 * CARD_COUNT) break; // # of config stages times # of cards
+        bool success;
+        if (counter % 2 == 0) {
+            success = set_card_id(counter / 2);
+            } else {
+            success = set_card_timeout(counter / 2);
+        }
+        counter = (success) ? counter + 1 : counter - 1;
+        if (counter < 0) break; // exit the setup screen
+    }
+    return 0; // go back to the main screen
+}
+int clocks_screen(int screen_index) {
     LCD_command(clear);
     for(;;) {
         button_t pressed = get_button();
         if (pressed == LEFT) {
-            return -1;
+            return screen_index - 1;
         } else if (pressed == RIGHT) {
-            return 1;
+            return screen_index + 1;
         }
         LCD_command(home); 
         LCD_string("1: ");
         LCD_string(format_card_timeout(0));
-        LCD_string("(MM/SS)");
+        LCD_string(" (MM/SS)");
         LCD_command(setCursor | lineTwo);
         LCD_string("2: ");
-        LCD_string("(MM/SS)");
         LCD_string(format_card_timeout(1));
+        LCD_string(" (MM/SS)");
     }
     return 0; // execution shouldn't reach this point
 }
-
-int ids_screen(void) {
+int ids_screen(int screen_index) {
     LCD_command(clear);
     for(;;) {
         button_t pressed = get_button();
         if (pressed == LEFT) {
-            return -1;
+            return screen_index - 1;
         } else if (pressed == RIGHT) {
-            return 1;
+            return screen_index + 1;
         }
         LCD_command(home);
         LCD_string("1: ");
@@ -353,14 +357,16 @@ int ids_screen(void) {
     }
     return 0; // execution shouldn't reach this point
 }
-int default_screen(void) {
+int main_screen(int screen_index) {
     LCD_command(clear);
     for(;;) {
         button_t pressed = get_button();
         if (pressed == LEFT) {
-            return -1;
+            return screen_index - 1;
         } else if (pressed == RIGHT) {
-            return 1;
+            return screen_index + 1;
+        } else if (pressed == UP) {
+            return 100; // go to setup screen
         }
         LCD_command(home);
         LCD_string("Scan a card:");
@@ -388,15 +394,17 @@ int main(void) {
     welcome_screen();
     UART_init();
     sei();
-    populate_cards_info();
+    setup_screen();
     TIMER1SEC_init();
-    int selector = 0;
+    int current_screen = 0, next_screen;
     while(1) {
-        if (selector < 0) selector = 2;
-        else if (selector == 0) selector += default_screen();
-        else if (selector == 1) selector += clocks_screen();
-        else if (selector == 2) selector += ids_screen();
-        else selector = 0;
+        if (current_screen < 0) next_screen = 2; // loop back to the ID's screen
+        else if (current_screen == 0) next_screen = main_screen(current_screen);
+        else if (current_screen == 1) next_screen = clocks_screen(current_screen);
+        else if (current_screen == 2) next_screen = ids_screen(current_screen);
+        else if (current_screen == 100) next_screen = setup_screen();
+        else next_screen = 0;
+        current_screen = next_screen;
     }
     return 0; // execution shouldn't reach this point
 }
