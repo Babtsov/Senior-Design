@@ -209,7 +209,7 @@ bool set_card_timeout(int card_index) {
     for(;;) {
         button_t button = get_button();
         if (button == LEFT) {
-            if (cursor_index <= 0) {
+            if (cursor_index <= 0) { // abort setup
                 setup_completed = false;
                 break;
             }
@@ -217,7 +217,11 @@ bool set_card_timeout(int card_index) {
                 LCD_command(moveLeft);
                 cursor_index--;
             } while(cursor_index == 2); // don't let cursor stand on ':'                
-        } else if (button == RIGHT && cursor_index < 4) {
+        } else if (button == RIGHT) {
+            if (cursor_index >= 4) { // setup is finished
+                setup_completed = true;
+                break;
+            }
             do {
                 LCD_command(moveRight);
                 cursor_index++;
@@ -233,11 +237,11 @@ bool set_card_timeout(int card_index) {
             LCD_uint(time[cursor_index]);
             LCD_command(moveLeft); // stay on the same digit
         } else if (button == OK) {
-            cards[card_index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
             setup_completed = true;
             break;
         }
     }
+    if (setup_completed) cards[card_index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
     LCD_command(cursorOff);
     return setup_completed;
 }
@@ -254,7 +258,7 @@ bool set_card_id(int index) {
             LCD_substring((char *)creader_buff.ID_str, 1, CREADER_BUFF_SIZE - 1);
             scanned_something = true; // mark it so we know we scanned SOMETHING
             release_creader_buff();
-        } else if (scanned_something && pressed == OK) { // if something got scanned and user confirmed, save it!
+        } else if (scanned_something && (pressed == OK || pressed == RIGHT)) { // if something got scanned and user confirmed, save it!
             strcpy(cards[index].id, (char *)creader_buff.ID_str);
             LCD_command(setCursor | lineTwo);
             LCD_string("RFID Saved!");
