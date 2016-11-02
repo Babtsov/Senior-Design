@@ -149,11 +149,11 @@ ISR(USART_RXC_vect) {
 /************************************************************************/
 /* Buttons Functions                                                    */
 /************************************************************************/
-typedef enum {NONE, LEFT, RIGHT, UP, DOWN, INVALID} button_t;
+typedef enum {NONE, LEFT, RIGHT, UP, DOWN, OK, INVALID} button_t;
 
 button_t get_button(void) {
     button_t pressed;
-    if (!(PINB & 0x0F)) {
+    if (!(PINB & 0x1F)) {
         return NONE;
     } else if (PINB & (1<<PB0)) {
         pressed = RIGHT;
@@ -163,6 +163,8 @@ button_t get_button(void) {
         pressed = UP;
     } else if (PINB & (1<<PB3)) {
         pressed = DOWN;
+    } else if (PINB & (1<<PB4)) {
+        pressed = OK;
     } else {
         pressed = INVALID;
     }
@@ -201,14 +203,14 @@ void set_card_timeout(int card_index) {
     uint8_t cursor_index = 0;
     int time[5] = {0}; // time[2] is a placeholder (because it corresponds to ':')
     button_t button = NONE;
-    while (cursor_index <= 4) {
+    while (button != OK) {
         button = get_button();
         if (button == LEFT && cursor_index > 0) {
             do {
                 LCD_command(moveLeft);
                 cursor_index--;
             } while(cursor_index == 2); // don't let cursor stand on ':'                
-        } else if (button == RIGHT) {
+        } else if (button == RIGHT && cursor_index < 4) {
             do {
                 LCD_command(moveRight);
                 cursor_index++;
@@ -237,7 +239,7 @@ void set_card_id(int index) {
     strcpy(cards[index].id, (char *)creader_buff.ID_str);
     LCD_command(setCursor | lineTwo);
     LCD_substring(cards[index].id, 1, CREADER_BUFF_SIZE - 1);
-    while(get_button() != RIGHT);
+    while(get_button() != OK);
     release_creader_buff();
 }
 void populate_cards_info(void) {
