@@ -124,6 +124,9 @@ unsigned char UART_get_char(void) {
 inline void waitfor_creader_buff(void) {
     while (!creader_buff.locked); // wait until buffer is unlocked for consumption
 }
+inline bool isready_creader_buff(void) {
+    return creader_buff.locked;
+}
 inline void release_creader_buff(void) {
     creader_buff.locked = false;
 }
@@ -191,7 +194,7 @@ ISR(TIMER1_COMPA_vect) {
 /************************************************************************/
 /* Main Program Functions                                               */
 /************************************************************************/
-void set_card_timeout(int card_index) {
+bool set_card_timeout(int card_index) {
     LCD_command(clear);
     LCD_command(cursorOn);
     LCD_string("Time for card ");
@@ -202,10 +205,14 @@ void set_card_timeout(int card_index) {
     LCD_command(setCursor | lineTwo);
     uint8_t cursor_index = 0;
     int time[5] = {0}; // time[2] is a placeholder (because it corresponds to ':')
-    button_t button = NONE;
-    while (button != OK) {
-        button = get_button();
-        if (button == LEFT && cursor_index > 0) {
+    bool setup_completed = false;
+    for(;;) {
+        button_t button = get_button();
+        if (button == LEFT) {
+            if (cursor_index <= 0) {
+                setup_completed = false;
+                break;
+            }
             do {
                 LCD_command(moveLeft);
                 cursor_index--;
@@ -225,27 +232,54 @@ void set_card_timeout(int card_index) {
             }
             LCD_uint(time[cursor_index]);
             LCD_command(moveLeft); // stay on the same digit
+        } else if (button == OK) {
+            cards[card_index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
+            setup_completed = true;
+            break;
         }
     }
-    cards[card_index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
     LCD_command(cursorOff);
+    return setup_completed;
 }
-void set_card_id(int index) {
+bool set_card_id(int index) {
     LCD_command(clear);
     LCD_string("Scan card ");
     LCD_char(index + '1');
     LCD_string(":");
-    waitfor_creader_buff();
-    strcpy(cards[index].id, (char *)creader_buff.ID_str);
-    LCD_command(setCursor | lineTwo);
-    LCD_substring(cards[index].id, 1, CREADER_BUFF_SIZE - 1);
-    while(get_button() != OK);
-    release_creader_buff();
+    bool setup_complete = false, scanned_something = false;
+    for(;;) {
+        button_t pressed = get_button();
+        if (isready_creader_buff()) { // if something is available, show it to the screen
+            LCD_command(setCursor | lineTwo);
+            LCD_substring((char *)creader_buff.ID_str, 1, CREADER_BUFF_SIZE - 1);
+            scanned_something = true; // mark it so we know we scanned SOMETHING
+            release_creader_buff();
+        } else if (scanned_something && pressed == OK) { // if something got scanned and user confirmed, save it!
+            strcpy(cards[index].id, (char *)creader_buff.ID_str);
+            LCD_command(setCursor | lineTwo);
+            LCD_string("RFID Saved!");
+            setup_complete = true;
+            _delay_ms(1500);
+            break;
+        } else if (pressed == LEFT) {
+            setup_complete = false;
+            break;
+        }
+    }
+    return setup_complete;
 }
 void populate_cards_info(void) {
-    for (int i = 0; i < CARD_COUNT; i++) {
-        set_card_id(i);
-        set_card_timeout(i);
+    int counter = 0;
+    for (;;) {
+        if (counter == 2 * CARD_COUNT) break; // # of config stages times # of cards
+        bool success;
+        if (counter % 2 == 0) {
+            success = set_card_id(counter / 2); 
+        } else {
+            success = set_card_timeout(counter / 2);
+        }
+        counter = (success) ? counter + 1 : counter - 1;
+        if (counter < 0) counter = 0;
     }
 }
 int find_card(char * str) {
@@ -256,9 +290,17 @@ int find_card(char * str) {
     }
     return -1;
 }
+void welcome_screen(void) {
+    LCD_command(clear);
+    LCD_string(" PharmaTracker");
+    LCD_command(setCursor | lineTwo);
+    LCD_string("Press any key...");
+    while(get_button() == NONE);
+}
 
 int main(void) {
     LCD_init();
+    welcome_screen();
     UART_init();
     TIMER1SEC_init();
     sei();
