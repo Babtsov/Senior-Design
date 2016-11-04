@@ -18,7 +18,12 @@ struct {
     uint16_t max_time;              // maximum amount of time a medicine can be checked out
     volatile uint16_t time_left;    // how much time remaining until medicine goes bad
     bool checked_out;               // is this medicine currently checked out
-} cards[CARD_COUNT];
+} cards[CARD_COUNT] = {             // default initializations mainly used for debugging
+    [0].id = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x36, 0x0d, 0x00},
+    [0].max_time = 2000, [0].time_left = 2000, [0].checked_out = false,
+    [1].id = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x46, 0x0d, 0x00},
+    [1].max_time = 68, [1].time_left = 68, [1].checked_out = false
+};
 
 struct {
     volatile char ID_str[CREADER_BUFF_SIZE + 1];    //extra char for null terminator
@@ -419,28 +424,15 @@ int confirm_configuration_screen(int screen_index) {
     }
     return 0; // execution shouldn't reach this point
 }
-void init_card_data(void) { //this function exists mainly for debugging
-    enable_T1SEC();
-    char id1[] = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x36, 0x0d, 0x00};
-    for (int i = 0; i < sizeof(id1)/sizeof(char); i++) {
-        cards[0].id[i] = id1[i];
-    }
-    cards[0].max_time = cards[0].time_left = 1234;
-    
-    char id2[] = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x46, 0x0d, 0x00};
-    for (int i = 0; i < sizeof(id2)/sizeof(char); i++) {
-        cards[1].id[i] = id2[i];
-    }
-    cards[1].max_time = cards[1].time_left = 68;
-}
+
 int main(void) {
-    init_card_data();
     LCD_init();
     T1SEC_init();
     UART_init();
     LCD_command(clear);
     LCD_string(" PharmaTracker");
     _delay_ms(2000);
+    enable_T1SEC();
     sei();
     int current_screen = 0, next_screen;
     for(;;) {
