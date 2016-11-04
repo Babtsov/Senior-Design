@@ -48,11 +48,12 @@ void LCD_uint(uint16_t);
 
 void LCD_init(void) {
     LCD_DIR |= 0x7E; // Data: PORTD6..PORTD3, E: PORTD2, RS: PORTD1
-    _delay_ms(150); // wait until LCD's voltage is high enough
-    LCD_command(0x33);
-    LCD_command(0x32);
-    LCD_command(0x2C);
-    LCD_command(0x0C);
+    _delay_ms(40); // wait until LCD's voltage is high enough
+    uint8_t init_commands[] = {0x30, 0x30, 0x30, 0x20, 0x20, 0xC0, 0x00, 0xC0};
+    for (int i = 0, n = sizeof(init_commands)/sizeof(uint8_t); i < n; i++) {
+        LCD_send_upper_nibble(init_commands[i]);
+        _delay_ms(10);
+    }
 }
 void LCD_send_upper_nibble(uint8_t byte) {
     LCD_PORT &= ~0x78; // Save the data of the LCD port (& set nibble to 0)
