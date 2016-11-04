@@ -14,15 +14,16 @@
 #define LCD_RS              PORTA1
 
 struct {
-    char id[CREADER_BUFF_SIZE + 1];
-    uint16_t max_time;
-    volatile uint16_t time_left;
+    char id[CREADER_BUFF_SIZE + 1]; // the RFID tag of the card attached to the medicine
+    uint16_t max_time;              // maximum amount of time a medicine can be checked out
+    volatile uint16_t time_left;    // how much time remaining until medicine goes bad
+    bool checked_out;               // is this medicine currently checked out
 } cards[CARD_COUNT];
 
 struct {
-    volatile char ID_str[CREADER_BUFF_SIZE + 1]; //extra char for null terminator
-    volatile uint8_t index; // pointer to an unoccupied slot
-    volatile bool locked; // buffer is locked from modifications by the ISR
+    volatile char ID_str[CREADER_BUFF_SIZE + 1];    //extra char for null terminator
+    volatile uint8_t index;                         // pointer to an unoccupied slot
+    volatile bool locked;                           // buffer is locked from modifications by the ISR
 } creader_buff;
 
 /************************************************************************/
@@ -186,7 +187,7 @@ void T1SEC_init(void) {
 }
 ISR(TIMER1_COMPA_vect) {
     for (uint8_t i = 0; i < CARD_COUNT; i++) {
-        if (cards[i].time_left > 0) {
+        if (cards[i].time_left > 0 && cards[i].checked_out) {
             cards[i].time_left--;
         }
     }
@@ -311,6 +312,10 @@ void probe_card_reader(void) {
         LCD_string(" detected!");
         LCD_command(setCursor | lineTwo);
         LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
+        cards[card_index].checked_out ^= 1; // toggle card status
+        if (!cards[card_index].checked_out) { // reset time if card is not checked out
+            cards[card_index].time_left = cards[card_index].max_time;
+        }
     } else {
         LCD_string("This card is");
         LCD_command(setCursor | lineTwo);
@@ -326,18 +331,14 @@ void probe_card_reader(void) {
 /* Each UI screen function returns the code of the next screen          */
 /* to transition to.                                                    */ 
 /* Screen codes:                                                        */
-/* 0    - main screen       - default screen                            */
-/* 1    - clocks screen     - show the remaining time of each tag       */
+/* 0    - clocks screen     - show the remaining time of each tag       */
+/* 1    - confirm config    - confirm the config screen                 */
 /* 2    - tags ID screen    - show the ID of each tag                   */
 /* 100  - setup screen      - configure the system with time & tag ID   */ 
 /************************************************************************/
 int setup_screen(void) {
     disable_T1SEC(); // stop timer while we are at the setup
     LCD_command(clear);
-    LCD_string("System Setup");
-    LCD_command(setCursor | lineTwo);
-    LCD_string("Press any key...");
-    while(probe_buttons() == NONE);
     int counter = 0;
     for (;;) {
         if (counter == 2 * CARD_COUNT) break; // # of config stages times # of cards
@@ -351,7 +352,7 @@ int setup_screen(void) {
         if (counter < 0) break; // exit the setup screen
     }
     enable_T1SEC(); // let the time start ticking...
-    return 0; // go back to the main screen
+    return 0; // go back to the clock screen
 }
 int clocks_screen(int screen_index) {
     LCD_command(clear);
@@ -370,11 +371,13 @@ int clocks_screen(int screen_index) {
         LCD_command(home); 
         LCD_string("1: ");
         LCD_string(format_time(cards[0].time_left));
-        LCD_string(" (MM/SS)");
+        if (cards[0].checked_out) LCD_string(" OUT");
+        else LCD_string(" IN");
         LCD_command(setCursor | lineTwo);
         LCD_string("2: ");
         LCD_string(format_time(cards[1].time_left));
-        LCD_string(" (MM/SS)");
+        if (cards[1].checked_out) LCD_string(" OUT"); 
+        else LCD_string(" IN");
     }
     return 0; // execution shouldn't reach this point
 }
@@ -397,7 +400,7 @@ int tagsID_screen(int screen_index) {
     }
     return 0; // execution shouldn't reach this point
 }
-int main_screen(int screen_index) {
+int confirm_configuration_screen(int screen_index) {
     LCD_command(clear);
     for(;;) {
         probe_card_reader();
@@ -406,17 +409,32 @@ int main_screen(int screen_index) {
             return screen_index - 1;
         } else if (pressed == RIGHT) {
             return screen_index + 1;
-        } else if (pressed == UP) {
+        } else if (pressed == OK) {
             return 100; // go to setup screen
         }
         LCD_command(home);
-        LCD_string("Scan a card...");
+        LCD_string("Press OK to");
         LCD_command(setCursor | lineTwo);
-        LCD_string("or press a key!");
+        LCD_string("configure system");
     }
     return 0; // execution shouldn't reach this point
-}    
+}
+void init_card_data(void) { //this function exists mainly for debugging
+    enable_T1SEC();
+    char id1[] = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x36, 0x0d, 0x00};
+    for (int i = 0; i < sizeof(id1)/sizeof(char); i++) {
+        cards[0].id[i] = id1[i];
+    }
+    cards[0].max_time = cards[0].time_left = 1234;
+    
+    char id2[] = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x46, 0x0d, 0x00};
+    for (int i = 0; i < sizeof(id2)/sizeof(char); i++) {
+        cards[1].id[i] = id2[i];
+    }
+    cards[1].max_time = cards[1].time_left = 68;
+}
 int main(void) {
+    init_card_data();
     LCD_init();
     T1SEC_init();
     UART_init();
@@ -427,8 +445,8 @@ int main(void) {
     int current_screen = 0, next_screen;
     for(;;) {
         if (current_screen < 0) next_screen = 2; // loop back to the ID's screen
-        else if (current_screen == 0) next_screen = main_screen(current_screen);
-        else if (current_screen == 1) next_screen = clocks_screen(current_screen);
+        else if (current_screen == 0) next_screen = clocks_screen(current_screen);
+        else if (current_screen == 1) next_screen = confirm_configuration_screen(current_screen);
         else if (current_screen == 2) next_screen = tagsID_screen(current_screen);
         else if (current_screen == 100) next_screen = setup_screen();
         else next_screen = 0;
