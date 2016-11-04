@@ -5,8 +5,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define CARD_COUNT          2
-#define CREADER_BUFF_SIZE   12
+#define CARD_COUNT          2       // the amount of different RFID cards the system supports
+#define CREADER_BUFF_SIZE   12      // card reader buffer size
 #define BAUDRATE            25      // baud rate: 2400 (see pg. 168)
 #define LCD_DIR             DDRA
 #define LCD_PORT            PORTA
@@ -15,7 +15,8 @@
 
 struct {
     char id[CREADER_BUFF_SIZE + 1];
-    volatile uint16_t timeout;
+    uint16_t max_time;
+    volatile uint16_t time_left;
 } cards[CARD_COUNT];
 
 struct {
@@ -43,7 +44,7 @@ void LCD_send_upper_nibble(uint8_t);
 void LCD_command(uint8_t);
 void LCD_char(uint8_t);
 void LCD_string(char[]);
-void LCD_substring(char[],int,int);
+void LCD_substring(char[], int, int);
 void LCD_uint(uint16_t);
 
 void LCD_init(void) {
@@ -155,7 +156,7 @@ ISR(USART_RXC_vect) {
 /************************************************************************/
 typedef enum {NONE, LEFT, RIGHT, UP, DOWN, OK, INVALID} button_t;
 
-button_t get_button(void) {
+button_t probe_buttons(void) {
     button_t pressed;
     if (!(PINB & 0x1F)) {
         return NONE;
@@ -179,26 +180,31 @@ button_t get_button(void) {
 /************************************************************************/
 /* 1 Second Timer Functions                                             */
 /************************************************************************/
-void TIMER1SEC_init(void) {
+void T1SEC_init(void) {
     TCCR1B = (1 << CS11 | 1 << CS10  | 1 << WGM12); // divide by 64 (see pg. 113)
     OCR1A = 15624; // TOP value
-    TIMSK = 1 << OCIE1A;
 }
 ISR(TIMER1_COMPA_vect) {
     for (uint8_t i = 0; i < CARD_COUNT; i++) {
-        if (cards[i].timeout > 0) {
-            cards[i].timeout--;
+        if (cards[i].time_left > 0) {
+            cards[i].time_left--;
         }
     }
 }
+inline void enable_T1SEC(void) {
+    TIMSK |= 1 << OCIE1A;
+}
+inline void disable_T1SEC(void) {
+    TIMSK &= ~(1 << OCIE1A);
+}
 
 /************************************************************************/
-/* Main Program Functions                                               */
+/* Helper Functions                                                     */
 /************************************************************************/
-char * format_card_timeout(int card_index) {
+char * format_time(uint16_t time) {
     static char time_str[6]= {'0', '0', ':', '0', '0', 0};
-    uint8_t minutes = cards[card_index].timeout / 60;
-    uint8_t seconds = cards[card_index].timeout % 60;
+    uint8_t minutes = time / 60;
+    uint8_t seconds = time % 60;
     time_str[0] = (minutes / 10) + '0';
     time_str[1] = (minutes % 10) + '0';
     time_str[3] = (seconds / 10) + '0';
@@ -206,23 +212,23 @@ char * format_card_timeout(int card_index) {
     return time_str;
 }
 
-bool set_card_timeout(int card_index) {
+bool set_card_timeout(int index) {
     LCD_command(clear);
     LCD_command(cursorOn);
     LCD_string("Time for card ");
-    LCD_uint(card_index + 1);
+    LCD_uint(index + 1);
     LCD_char(':');
     LCD_command(setCursor | lineTwo);
-    LCD_string(format_card_timeout(card_index));
+    LCD_string(format_time(cards[index].max_time));
     LCD_string(" (MM/SS)");
     LCD_command(setCursor | lineTwo);
     uint8_t cursor_index = 0;
-    uint8_t min = cards[card_index].timeout / 60;
-    uint8_t sec = cards[card_index].timeout % 60;
+    uint8_t min = cards[index].max_time / 60;
+    uint8_t sec = cards[index].max_time % 60;
     int time[5] = {min/10, min%10, 0, sec/10, sec%10}; // time[2] is a placeholder (corresponds to ':')
     bool setup_completed = false;
     for(;;) {
-        button_t button = get_button();
+        button_t button = probe_buttons();
         if (button == LEFT) {
             if (cursor_index <= 0) { // abort setup
                 setup_completed = false;
@@ -256,7 +262,7 @@ bool set_card_timeout(int card_index) {
             break;
         }
     }
-    cards[card_index].timeout = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
+    cards[index].max_time = cards[index].time_left = 60 * (10 * time[0] + time[1]) + 10 * time[3] + time[4];
     LCD_command(cursorOff);
     return setup_completed;
 }
@@ -269,7 +275,7 @@ bool set_card_id(int index) {
     LCD_substring(cards[index].id, 1, CREADER_BUFF_SIZE - 1);
     bool setup_complete = false;
     for(;;) {
-        button_t pressed = get_button();
+        button_t pressed = probe_buttons();
         if (isready_creader_buff()) { // if something is available, show it to the screen
             LCD_command(setCursor | lineTwo);
             LCD_substring((char *)creader_buff.ID_str, 1, CREADER_BUFF_SIZE - 1);
@@ -285,7 +291,6 @@ bool set_card_id(int index) {
     }
     return setup_complete;
 }
-
 int find_card(char * str) {
     for (int i = 0; i < CARD_COUNT; i++) {
         if (strcmp(cards[i].id, str) == 0) {
@@ -294,21 +299,45 @@ int find_card(char * str) {
     }
     return -1;
 }
+void probe_card_reader(void) {
+    if (!isready_creader_buff()) { // no card is near the RFID scanner
+        return;
+    }
+    LCD_command(clear);
+    int card_index = find_card((char *)creader_buff.ID_str);
+    if (card_index >= 0) {
+        LCD_string("Card ");
+        LCD_char(card_index + '1');
+        LCD_string(" detected!");
+        LCD_command(setCursor | lineTwo);
+        LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
+    } else {
+        LCD_string("This card is");
+        LCD_command(setCursor | lineTwo);
+        LCD_string("not registered.");
+    }
+    _delay_ms(3000);
+    LCD_command(clear);
+    release_creader_buff();
+}
 
 /************************************************************************/
-/* UI screen functions                                                 */
+/* UI screen functions                                                  */
+/* Each UI screen function returns the code of the next screen          */
+/* to transition to.                                                    */ 
+/* Screen codes:                                                        */
+/* 0    - main screen       - default screen                            */
+/* 1    - clocks screen     - show the remaining time of each tag       */
+/* 2    - tags ID screen    - show the ID of each tag                   */
+/* 100  - setup screen      - configure the system with time & tag ID   */ 
 /************************************************************************/
-void welcome_screen(void) {
-    LCD_command(clear);
-    LCD_string(" PharmaTracker");
-    _delay_ms(2000);
-}
 int setup_screen(void) {
+    disable_T1SEC(); // stop timer while we are at the setup
     LCD_command(clear);
-    LCD_string("  Setup Wizard");
+    LCD_string("System Setup");
     LCD_command(setCursor | lineTwo);
     LCD_string("Press any key...");
-    while(get_button() == NONE);
+    while(probe_buttons() == NONE);
     int counter = 0;
     for (;;) {
         if (counter == 2 * CARD_COUNT) break; // # of config stages times # of cards
@@ -321,32 +350,39 @@ int setup_screen(void) {
         counter = (success) ? counter + 1 : counter - 1;
         if (counter < 0) break; // exit the setup screen
     }
+    enable_T1SEC(); // let the time start ticking...
     return 0; // go back to the main screen
 }
 int clocks_screen(int screen_index) {
     LCD_command(clear);
     for(;;) {
-        button_t pressed = get_button();
+        probe_card_reader();
+        button_t pressed = probe_buttons();
         if (pressed == LEFT) {
             return screen_index - 1;
         } else if (pressed == RIGHT) {
             return screen_index + 1;
+        } else if (pressed == UP) {
+            enable_T1SEC();
+        } else if (pressed == DOWN) {
+            disable_T1SEC();
         }
         LCD_command(home); 
         LCD_string("1: ");
-        LCD_string(format_card_timeout(0));
+        LCD_string(format_time(cards[0].time_left));
         LCD_string(" (MM/SS)");
         LCD_command(setCursor | lineTwo);
         LCD_string("2: ");
-        LCD_string(format_card_timeout(1));
+        LCD_string(format_time(cards[1].time_left));
         LCD_string(" (MM/SS)");
     }
     return 0; // execution shouldn't reach this point
 }
-int ids_screen(int screen_index) {
+int tagsID_screen(int screen_index) {
     LCD_command(clear);
     for(;;) {
-        button_t pressed = get_button();
+        probe_card_reader();
+        button_t pressed = probe_buttons();
         if (pressed == LEFT) {
             return screen_index - 1;
         } else if (pressed == RIGHT) {
@@ -364,7 +400,8 @@ int ids_screen(int screen_index) {
 int main_screen(int screen_index) {
     LCD_command(clear);
     for(;;) {
-        button_t pressed = get_button();
+        probe_card_reader();
+        button_t pressed = probe_buttons();
         if (pressed == LEFT) {
             return screen_index - 1;
         } else if (pressed == RIGHT) {
@@ -376,38 +413,23 @@ int main_screen(int screen_index) {
         LCD_string("Scan a card...");
         LCD_command(setCursor | lineTwo);
         LCD_string("or press a key!");
-        if (isready_creader_buff()) {
-            LCD_command(clear);
-            int card_index = find_card((char *)creader_buff.ID_str);
-            if (card_index >= 0) {
-                LCD_string("card ");
-                LCD_char(card_index + '1');
-                LCD_string(" detected!");
-                LCD_command(setCursor | lineTwo);
-                LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
-            } else {
-                LCD_string("Unknown Card.");
-            }
-            _delay_ms(2000);
-            LCD_command(clear);
-            release_creader_buff();
-        }        
     }
     return 0; // execution shouldn't reach this point
 }    
 int main(void) {
     LCD_init();
-    welcome_screen();
+    T1SEC_init();
     UART_init();
+    LCD_command(clear);
+    LCD_string(" PharmaTracker");
+    _delay_ms(2000);
     sei();
-    setup_screen();
-    TIMER1SEC_init();
     int current_screen = 0, next_screen;
-    while(1) {
+    for(;;) {
         if (current_screen < 0) next_screen = 2; // loop back to the ID's screen
         else if (current_screen == 0) next_screen = main_screen(current_screen);
         else if (current_screen == 1) next_screen = clocks_screen(current_screen);
-        else if (current_screen == 2) next_screen = ids_screen(current_screen);
+        else if (current_screen == 2) next_screen = tagsID_screen(current_screen);
         else if (current_screen == 100) next_screen = setup_screen();
         else next_screen = 0;
         current_screen = next_screen;
