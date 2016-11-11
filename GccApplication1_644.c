@@ -19,7 +19,7 @@ struct {
     uint16_t max_time;              // maximum amount of time a medicine can be checked out
     volatile uint16_t time_left;    // how much time remaining until medicine goes bad
     bool checked_out;               // is this medicine currently checked out
-    } cards[CARD_COUNT] = {         // default initializations mainly used for debugging
+} cards[CARD_COUNT] = {             // default initializations mainly used for debugging
     [0].id = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x36, 0x0d, 0x00},
     [0].max_time = 2000, [0].time_left = 2000, [0].checked_out = false,
     [1].id = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x46, 0x0d, 0x00},
@@ -207,8 +207,8 @@ button_t probe_buttons(void) {
 /* 1 Second Timer Functions                                             */
 /************************************************************************/
 void T1SEC_init(void) {
-    TCCR1B = (1 << CS11 | 1 << CS10  | 1 << WGM12); // divide by 64 (see pg. 113)
-    OCR1A = 15624; // TOP value
+    TCCR1B = (1 << CS12  | 1 << WGM12); // prescaler is 256 (see pg. 177)
+    OCR1A = 31249; // TOP value:  required_time/(1/(F_CPU/prescaler))-1
 }
 ISR(TIMER1_COMPA_vect) {
     for (uint8_t i = 0; i < CARD_COUNT; i++) {
@@ -218,10 +218,10 @@ ISR(TIMER1_COMPA_vect) {
     }
 }
 inline void enable_T1SEC(void) {
-    TIMSK0 |= 1 << OCIE1A;
+    TIMSK1 |= 1 << OCIE1A;
 }
 inline void disable_T1SEC(void) {
-    TIMSK0 &= ~(1 << OCIE1A);
+    TIMSK1 &= ~(1 << OCIE1A);
 }
 
 /************************************************************************/
@@ -388,10 +388,6 @@ int clocks_screen(int screen_index) {
             return screen_index - 1;
         } else if (pressed == RIGHT) {
             return screen_index + 1;
-        } else if (pressed == UP) {
-            enable_T1SEC();
-        } else if (pressed == DOWN) {
-            disable_T1SEC();
         }
         LCD_command(home);
         LCD_string("1: ");
