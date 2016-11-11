@@ -5,20 +5,21 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define CARD_COUNT          2       // the amount of different RFID cards the system supports
-#define CREADER_BUFF_SIZE   12      // card reader buffer size
-#define BAUD_REG_VAL        207     // baud rate: 2400 (see pg. 242)
-#define LCD_DIR             DDRA
-#define LCD_PORT            PORTA
-#define LCD_E               PORTA2
-#define LCD_RS              PORTA1
+#define CARD_COUNT              2       // the amount of different RFID cards the system supports
+#define CREADER_BUFF_SIZE       12      // card reader buffer size
+#define CREADER_BAUD_REG_VAL    207     // card reader baud rate: 2400 (see pg. 242)
+#define ESP8266_BAUD_REG_VAL    51      // WiFi chip baud rate: 9600 (see pg. 242)
+#define LCD_DIR                 DDRA
+#define LCD_PORT                PORTA
+#define LCD_E                   PORTA2
+#define LCD_RS                  PORTA1
 
 struct {
     char id[CREADER_BUFF_SIZE + 1]; // the RFID tag of the card attached to the medicine
     uint16_t max_time;              // maximum amount of time a medicine can be checked out
     volatile uint16_t time_left;    // how much time remaining until medicine goes bad
     bool checked_out;               // is this medicine currently checked out
-    } cards[CARD_COUNT] = {             // default initializations mainly used for debugging
+    } cards[CARD_COUNT] = {         // default initializations mainly used for debugging
     [0].id = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x36, 0x0d, 0x00},
     [0].max_time = 2000, [0].time_left = 2000, [0].checked_out = false,
     [1].id = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x46, 0x0d, 0x00},
@@ -112,27 +113,22 @@ void LCD_uint(uint16_t num) {
 }
 
 /************************************************************************/
-/* UART Functions                                                       */
+/* UART card reader Functions                                           */
 /************************************************************************/
-void UART_init(void) {
-    PORTD |= 0x01; // enable transmitter
-    UBRR0H = (BAUD_REG_VAL>>8);
-    UBRR0L = BAUD_REG_VAL;
+void UART_creader_init(void) {
+    UBRR0H = (CREADER_BAUD_REG_VAL>>8);
+    UBRR0L = CREADER_BAUD_REG_VAL;
     UCSR0B = (1<<TXEN0) | (1<<RXEN0);
-    //UCSR0C = (1<<UMSEL00) | (1<<UCSZ00) | (1<<UCSZ10);   // 8bit data format 1 parity
     UCSR0C = (3<<UCSZ00);
     UCSR0B |= (1 << RXCIE0); // enable interrupt on receive
 }
-void UART_send(unsigned char data) {
-    while (!( UCSR0A & (1<<UDRE0)));
+void UART_creader_send(unsigned char data) {
+    while (!(UCSR0A & (1<<UDRE0)));
     UDR0 = data;
 }
-unsigned char UART_get_char(void) {
+unsigned char UART_creader_receive(void) {
     while(~(UCSR0A) & (1<<RXC0));
     return UDR0;
-}
-inline void waitfor_creader_buff(void) {
-    while (!creader_buff.locked); // wait until buffer is unlocked for consumption
 }
 inline bool isready_creader_buff(void) {
     return creader_buff.locked;
@@ -141,11 +137,9 @@ inline void release_creader_buff(void) {
     creader_buff.locked = false;
 }
 ISR(USART0_RX_vect) {
-    char c = UART_get_char();
-    UART_send(c); // debug:: echo
-    if (creader_buff.locked) {
-        return;
-    }
+    char c = UART_creader_receive();
+    UART_creader_send(c); // debug:: echo
+    if (creader_buff.locked) return; 
     uint8_t index = creader_buff.index;
     if ((index == 0 && c != 0x0A) || (index == CREADER_BUFF_SIZE - 1 && c != 0x0D)) {
         creader_buff.index = 0; // reset buffer since data is not valid
@@ -160,6 +154,30 @@ ISR(USART0_RX_vect) {
 }
 
 /************************************************************************/
+/* UART ESP8266 Functions                                               */
+/************************************************************************/
+void UART_ESP8266_init(void) {
+    UBRR1H = (ESP8266_BAUD_REG_VAL>>8);
+    UBRR1L = ESP8266_BAUD_REG_VAL;
+    UCSR1B = (1<<TXEN1) | (1<<RXEN1);
+    UCSR1C = (3<<UCSZ10);
+    UCSR1B |= (1 << RXCIE1); // enable interrupt on receive
+}
+void UART_ESP8266_send(unsigned char data) {
+    while (!( UCSR1A & (1<<UDRE1)));
+    UDR1 = data;
+}
+unsigned char UART_ESP8266_receive(void) {
+    while(~(UCSR1A) & (1<<RXC1));
+    return UDR1;
+}
+ISR(USART1_RX_vect) {
+    char c = UART_ESP8266_receive();
+    UART_ESP8266_send(c);
+}
+
+
+/************************************************************************/
 /* Buttons Functions                                                    */
 /************************************************************************/
 typedef enum {NONE, LEFT, RIGHT, UP, DOWN, OK, INVALID} button_t;
@@ -168,17 +186,17 @@ button_t probe_buttons(void) {
     button_t pressed;
     if (!(PINB & 0x1F)) {
         return NONE;
-        } else if (PINB & (1<<PB0)) {
+    } else if (PINB & (1<<PB0)) {
         pressed = RIGHT;
-        } else if (PINB & (1<<PB1)) {
+    } else if (PINB & (1<<PB1)) {
         pressed = LEFT;
-        } else if (PINB & (1<<PB2)) {
+    } else if (PINB & (1<<PB2)) {
         pressed = UP;
-        } else if (PINB & (1<<PB3)) {
+    } else if (PINB & (1<<PB3)) {
         pressed = DOWN;
-        } else if (PINB & (1<<PB4)) {
+    } else if (PINB & (1<<PB4)) {
         pressed = OK;
-        } else {
+    } else {
         pressed = INVALID;
     }
     _delay_ms(200);
@@ -430,7 +448,8 @@ int confirm_configuration_screen(int screen_index) {
 int main(void) {
     LCD_init();
     T1SEC_init();
-    UART_init();
+    UART_creader_init();
+    UART_ESP8266_init();
     LCD_command(clear);
     LCD_string(" PharmaTracker");
     _delay_ms(2000);
