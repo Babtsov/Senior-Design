@@ -264,7 +264,7 @@ bool set_card_timeout(int index) {
                 LCD_command(moveLeft);
                 cursor_index--;
             } while(cursor_index == 2); // don't let cursor stand on ':'
-            } else if (button == RIGHT) {
+        } else if (button == RIGHT) {
             if (cursor_index >= 4) { // setup is finished
                 setup_completed = true;
                 break;
@@ -273,17 +273,17 @@ bool set_card_timeout(int index) {
                 LCD_command(moveRight);
                 cursor_index++;
             } while(cursor_index == 2); // don't let cursor stand on ':'
-            } else if (button == UP || button == DOWN) {
+        } else if (button == UP || button == DOWN) {
             int digit = time[cursor_index];
             int inc = (button == UP) ? 1 : -1;
             if (cursor_index == 0 || cursor_index == 3) {
                 time[cursor_index] = (digit + inc < 0)? 5 : (digit + inc) % 6; // digit 0~5
-                } else if (cursor_index == 1 || cursor_index == 4) {
+            } else if (cursor_index == 1 || cursor_index == 4) {
                 time[cursor_index] = (digit + inc < 0)? 9 : (digit + inc) % 10; // digit 0~9
             }
             LCD_char(time[cursor_index] + '0');
             LCD_command(moveLeft); // stay on the same digit
-            } else if (button == OK) { // setup is finished
+        } else if (button == OK) { // setup is finished
             setup_completed = true;
             break;
         }
@@ -306,11 +306,11 @@ bool set_card_id(int index) {
             LCD_command(setCursor | lineTwo);
             LCD_substring((char *)creader_buff.ID_str, 1, CREADER_BUFF_SIZE - 1);
             release_creader_buff();
-            } else if (pressed == OK || pressed == RIGHT) {
+        } else if (pressed == OK || pressed == RIGHT) {
             strcpy(cards[index].id, (char *)creader_buff.ID_str);
             setup_complete = true;
             break;
-            } else if (pressed == LEFT) {
+        } else if (pressed == LEFT) {
             setup_complete = false;
             break;
         }
@@ -331,17 +331,17 @@ void probe_card_reader(void) {
     }
     LCD_command(clear);
     int card_index = find_card((char *)creader_buff.ID_str);
-    if (card_index >= 0) {
+    if (card_index >= 0) {                      // check if card is found
+        if (!cards[card_index].checked_out) {   // reset time if card is not checked out
+            cards[card_index].time_left = cards[card_index].max_time;
+        }
+        cards[card_index].checked_out ^= 1;     // toggle card status
         LCD_string("Card ");
         LCD_char(card_index + '1');
         LCD_string(" detected!");
         LCD_command(setCursor | lineTwo);
         LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
-        cards[card_index].checked_out ^= 1; // toggle card status
-        if (!cards[card_index].checked_out) { // reset time if card is not checked out
-            cards[card_index].time_left = cards[card_index].max_time;
-        }
-        } else {
+    } else {
         LCD_string("This card is");
         LCD_command(setCursor | lineTwo);
         LCD_string("not registered.");
@@ -370,7 +370,7 @@ int setup_screen(void) {
         bool success;
         if (counter % 2 == 0) {
             success = set_card_id(counter / 2);
-            } else {
+        } else {
             success = set_card_timeout(counter / 2);
         }
         counter = (success) ? counter + 1 : counter - 1;
@@ -386,11 +386,11 @@ int clocks_screen(int screen_index) {
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
             return screen_index - 1;
-            } else if (pressed == RIGHT) {
+        } else if (pressed == RIGHT) {
             return screen_index + 1;
-            } else if (pressed == UP) {
+        } else if (pressed == UP) {
             enable_T1SEC();
-            } else if (pressed == DOWN) {
+        } else if (pressed == DOWN) {
             disable_T1SEC();
         }
         LCD_command(home);
@@ -413,7 +413,7 @@ int tagsID_screen(int screen_index) {
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
             return screen_index - 1;
-            } else if (pressed == RIGHT) {
+        } else if (pressed == RIGHT) {
             return screen_index + 1;
         }
         LCD_command(home);
@@ -432,9 +432,9 @@ int confirm_configuration_screen(int screen_index) {
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
             return screen_index - 1;
-            } else if (pressed == RIGHT) {
+        } else if (pressed == RIGHT) {
             return screen_index + 1;
-            } else if (pressed == OK) {
+        } else if (pressed == OK) {
             return 100; // go to setup screen
         }
         LCD_command(home);
