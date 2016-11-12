@@ -32,15 +32,15 @@ def main_page():
 def add_entry(id, action):
     if action == 'i':
         timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
-        table.append(TableEntry(id, "check in", timestamp, "success"))
+        table.append(TableEntry(id, "checked in", timestamp, "success"))
     elif action == 'o':
         timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
-        table.append(TableEntry(id, "check out", timestamp, "warning"))
+        table.append(TableEntry(id, "checked out", timestamp, "warning"))
     elif action == 'a':
         timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
         table.append(TableEntry(id, "alarm triggered", timestamp, "danger"))
     else:
-        abort(400,"Invalid action. Use i for check-in and o for check-out")
+        abort(400,"Invalid action.")
 
     return 'OK\r\n'
 
