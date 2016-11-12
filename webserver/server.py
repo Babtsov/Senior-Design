@@ -3,19 +3,25 @@ import datetime
 
 
 class TableEntry:
-    def __init__(self, rfid, check_in='', check_out='', status='warning'):
+    def __init__(self, rfid, action, timestamp, status = 'info'):
         self.RFID = rfid
+        self.event = action
+        self.timestamp = timestamp
         self.status = status
-        self.check_in = check_in
-        self.check_out = check_out
 
 
 table = [
-    TableEntry(4950384950,"05:41:41 AM Sat Nov 12, 2016","05:41:54 AM Sat Nov 12, 2016", "success"),
-    TableEntry(4950384950,"05:41:41 AM Sat Nov 12, 2016","05:41:54 AM Sat Nov 12, 2016", "success"),
-    TableEntry(4950384950,"05:41:41 AM Sat Nov 12, 2016","05:41:54 AM Sat Nov 12, 2016", "danger"),
-    TableEntry(3857403840,"05:45:11 AM Sat Nov 12, 2016","05:50:58 AM Sat Nov 12, 2016", "success"),
+    TableEntry(4950384950,"checked out", "05:41:41 AM Sat Nov 12, 2016", "warning"),
+    TableEntry(4950384950,"checked in", "05:41:41 AM Sat Nov 12, 2016", "success"),
+    TableEntry(4950384950,"checked in", "05:41:41 AM Sat Nov 12, 2016", "success"),
+    TableEntry(3857403840,"checked out", "05:45:11 AM Sat Nov 12, 2016", "warning"),
+    TableEntry(3857403840,"alarm triggered", "05:45:11 AM Sat Nov 12, 2016", "danger"),
+    TableEntry(3857403840,"checked out", "05:45:11 AM Sat Nov 12, 2016", "warning"),
+    TableEntry(3857403840,"checked out", "05:45:11 AM Sat Nov 12, 2016", "warning"),
+    TableEntry(1318475940,"checked out", "05:45:11 AM Sat Nov 12, 2016", "warning"),
+    TableEntry(1318475940,"checked in", "05:41:41 AM Sat Nov 12, 2016", "success")
 ]
+
 
 @route('/')
 def main_page():
@@ -24,15 +30,19 @@ def main_page():
 
 @route('/add/<id>/<action>')
 def add_entry(id, action):
-    entry = TableEntry(id)
     if action == 'i':
-        entry.check_in = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
+        timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
+        table.append(TableEntry(id, "check in", timestamp, "success"))
     elif action == 'o':
-        entry.check_out = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
+        timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
+        table.append(TableEntry(id, "check out", timestamp, "warning"))
+    elif action == 'a':
+        timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
+        table.append(TableEntry(id, "alarm triggered", timestamp, "danger"))
     else:
         abort(400,"Invalid action. Use i for check-in and o for check-out")
-    table.append(entry)
-    return 'OK'
+
+    return 'OK\r\n'
 
 run(host='0.0.0.0', port=80)
 

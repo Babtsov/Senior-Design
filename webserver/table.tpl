@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>PharmaTracker</title>
+  <title>PharmaTracker Logger</title>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
@@ -11,22 +11,22 @@
 <body>
 
 <div class="container">
-  <h2>PharmaTracker</h2>
-  <p>Below you'll find the check-in and check-out times of all the medicines currently attached to an RFID tag. Red columns indicate a medicine which was checked out more than allowed.</p>
+  <h2>PharmaTracker Logger</h2>
+  <p>Each event detected by the PharmaTracker system is recorded in the table below.</p>
   <table class="table table-hover">
     <thead>
       <tr>
         <th>Medicine ID</th>
-        <th>Check-in Time</th>
-        <th>Check-out Time</th>
+        <th>Event</th>
+        <th>Timestamp</th>
       </tr>
     </thead>
     <tbody>
     %for entry in entries:
         <tr class = "{{entry.status}}">
             <td>{{entry.RFID}}</td>
-            <td>{{entry.check_in}}</td>
-            <td>{{entry.check_out}}</td>
+            <td>{{entry.event}}</td>
+            <td>{{entry.timestamp}}</td>
         </tr>
     %end
     </tbody>
