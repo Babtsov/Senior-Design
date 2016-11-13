@@ -16,17 +16,17 @@
   <table class="table table-hover">
     <thead>
       <tr>
-        <th>Medicine ID</th>
+        <th>Medicine RFID</th>
         <th>Event</th>
         <th>Timestamp</th>
       </tr>
     </thead>
     <tbody>
     {% for entry in entries %}
-        <tr class = "{{entry.status}}">
+        <tr class = "{{entry.get_event_info()['color']}}">
             <td>{{entry.RFID}}</td>
-            <td>{{entry.event}}</td>
-            <td>{{entry.timestamp}}</td>
+            <td>{{entry.get_event_info()['description']}}</td>
+            <td>{{entry.timestamp.strftime("%I:%M:%S %p %a %b %d, %Y")}}</td>
         </tr>
     {% endfor %}
     </tbody>

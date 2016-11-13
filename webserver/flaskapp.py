@@ -1,29 +1,40 @@
-from flask import Flask
-from flask import render_template
-app = Flask(__name__)
+from flask import Flask, render_template, abort
+from datetime import datetime
 
-import datetime
+
+class Event:
+    CHECK_IN, CHECK_OUT, ALARM = range(3)
 
 
 class TableEntry:
-    def __init__(self, rfid, action, timestamp, status = 'info'):
+    def __init__(self, rfid, action, timestamp):
         self.RFID = rfid
         self.event = action
         self.timestamp = timestamp
-        self.status = status
 
+    def get_event_info(self):
+        if self.event == Event.CHECK_IN:
+            return dict(description="checked in", color="success")
+        elif self.event == Event.CHECK_OUT:
+            return dict(description="checked out", color="warning")
+        elif self.event == Event.ALARM:
+            return dict(description="alarm triggered", color="danger")
+        else:
+            return dict(description="", color="info")
 
 table = [
-    TableEntry(4950384950,"checked out", "05:41:41 AM Sat Nov 12, 2016", "warning"),
-    TableEntry(4950384950,"checked in", "05:41:41 AM Sat Nov 12, 2016", "success"),
-    TableEntry(4950384950,"checked in", "05:41:41 AM Sat Nov 12, 2016", "success"),
-    TableEntry(3857403840,"checked out", "05:45:11 AM Sat Nov 12, 2016", "warning"),
-    TableEntry(3857403840,"alarm triggered", "05:45:11 AM Sat Nov 12, 2016", "danger"),
-    TableEntry(3857403840,"checked out", "05:45:11 AM Sat Nov 12, 2016", "warning"),
-    TableEntry(3857403840,"checked out", "05:45:11 AM Sat Nov 12, 2016", "warning"),
-    TableEntry(1318475940,"checked out", "05:45:11 AM Sat Nov 12, 2016", "warning"),
-    TableEntry(1318475940,"checked in", "05:41:41 AM Sat Nov 12, 2016", "success")
+    TableEntry(4950384950, Event.CHECK_OUT, datetime(2016, 4, 30, 3, 1, 38)),
+    TableEntry(4950384950, Event.CHECK_IN, datetime(2016, 4, 30, 3, 11, 38)),
+    TableEntry(4950384950, Event.CHECK_IN, datetime(2016, 4, 30, 3, 1, 1)),
+    TableEntry(3857403840, Event.CHECK_OUT, datetime(2016, 5, 30, 3, 1, 38)),
+    TableEntry(3857403840, Event.ALARM, datetime(2016, 4, 6, 3, 1, 38)),
+    TableEntry(3857403840, Event.CHECK_OUT, datetime(2016, 7, 30, 3, 1, 38)),
+    TableEntry(3857403840, Event.ALARM, datetime(2016, 4, 8, 3, 1, 38)),
+    TableEntry(1318475940, Event.CHECK_OUT, datetime(2016, 8, 30, 3, 1, 38)),
+    TableEntry(1318475940, Event.CHECK_IN, datetime(2016, 9, 30, 3, 1, 38))
 ]
+
+app = Flask(__name__)
 
 
 @app.route('/')
@@ -31,19 +42,18 @@ def main_page():
     return render_template('table.html', entries=table)
 
 
-@app.route('/add/<id>/<action>')
-def add_entry(id, action):
+@app.route('/add/<rfid>/<action>')
+def add_entry(rfid, action):
+    timestamp = datetime.now()
     if action == 'i':
-        timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
-        table.append(TableEntry(id, "checked in", timestamp, "success"))
+        table.append(TableEntry(rfid, Event.CHECK_IN, timestamp))
     elif action == 'o':
-        timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
-        table.append(TableEntry(id, "checked out", timestamp, "warning"))
+        table.append(TableEntry(rfid, Event.CHECK_OUT, timestamp))
     elif action == 'a':
-        timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
-        table.append(TableEntry(id, "alarm triggered", timestamp, "danger"))
-
+        table.append(TableEntry(rfid, Event.ALARM, timestamp))
+    else:
+        abort(400, 'invalid action')
     return 'OK\r\n'
 
 if __name__ == '__main__':
-  app.run()
+    app.run()
