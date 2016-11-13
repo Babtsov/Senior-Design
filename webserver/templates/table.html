@@ -22,13 +22,13 @@
       </tr>
     </thead>
     <tbody>
-    %for entry in entries:
+    {% for entry in entries %}
         <tr class = "{{entry.status}}">
             <td>{{entry.RFID}}</td>
             <td>{{entry.event}}</td>
             <td>{{entry.timestamp}}</td>
         </tr>
-    %end
+    {% endfor %}
     </tbody>
   </table>
 </div>

@@ -1,4 +1,7 @@
-from bottle import *
+from flask import Flask
+from flask import render_template
+app = Flask(__name__)
+
 import datetime
 
 
@@ -23,12 +26,12 @@ table = [
 ]
 
 
-@route('/')
+@app.route('/')
 def main_page():
-    return template('table', entries=table)
+    return render_template('table.html', entries=table)
 
 
-@route('/add/<id>/<action>')
+@app.route('/add/<id>/<action>')
 def add_entry(id, action):
     if action == 'i':
         timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
@@ -39,11 +42,8 @@ def add_entry(id, action):
     elif action == 'a':
         timestamp = datetime.datetime.now().strftime("%I:%M:%S %p %a %b %d, %Y")
         table.append(TableEntry(id, "alarm triggered", timestamp, "danger"))
-    else:
-        abort(400,"Invalid action.")
 
     return 'OK\r\n'
 
-run(host='0.0.0.0', port=80)
-
-
+if __name__ == '__main__':
+  app.run()
