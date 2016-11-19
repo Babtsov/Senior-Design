@@ -6,6 +6,7 @@ apt-get install python-pip
 pip install flask
 ln -sT ~/Senior-Design/webserver /var/www/html/flaskapp
 cp apache.conf /etc/apache2/sites-enabled/000-default.conf
-python create_database.py
+cd ..
+python config/create_database.py
 sudo apachectl restart
 echo "done configuting system"

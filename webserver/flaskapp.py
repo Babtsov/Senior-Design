@@ -4,7 +4,7 @@ import sqlite3
 
 app = Flask(__name__)
 
-DATABASE = 'logs.db'
+DATABASE = '/home/ubuntu/Senior-Design/webserver/logs.db'
 
 
 def get_db_connection():
@@ -65,4 +65,4 @@ def add_entry(rfid, action):
     return 'OK\r\n'
 
 if __name__ == '__main__':
-    app.run()
+    app.run('0.0.0.0',80)
