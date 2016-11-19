@@ -4,7 +4,7 @@ import sqlite3
 
 app = Flask(__name__)
 
-DATABASE = '/home/ubuntu/Senior-Design/webserver/logs.db'
+DATABASE = '/data/logs.db'
 
 
 def get_db_connection():
