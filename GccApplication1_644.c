@@ -156,16 +156,25 @@ ISR(USART0_RX_vect) {
 /************************************************************************/
 /* UART ESP8266 Functions                                               */
 /************************************************************************/
-void UART_ESP8266_init(void) {
-    UBRR1H = (ESP8266_BAUD_REG_VAL>>8);
-    UBRR1L = ESP8266_BAUD_REG_VAL;
-    UCSR1B = (1<<TXEN1) | (1<<RXEN1);
-    UCSR1C = (3<<UCSZ10);
-    UCSR1B |= (1 << RXCIE1); // enable interrupt on receive
-}
+#define ESP8266_ROW_SIZE 10
+#define ESP8266_COL_SIZE 20
+struct {
+    volatile char buffer[ESP8266_ROW_SIZE][ESP8266_COL_SIZE];
+    volatile uint8_t row_index;
+    volatile uint8_t col_index;
+} ESP8266;
+
+
 void UART_ESP8266_send(unsigned char data) {
     while (!( UCSR1A & (1<<UDRE1)));
     UDR1 = data;
+}
+void UART_ESP8266_cmd(char string[]) {
+    for (int i = 0; string[i] != 0; i++) {
+        UART_ESP8266_send(string[i]);
+    }
+    UART_ESP8266_send(0x0D);
+    UART_ESP8266_send(0x0A);
 }
 unsigned char UART_ESP8266_receive(void) {
     while(~(UCSR1A) & (1<<RXC1));
@@ -173,8 +182,83 @@ unsigned char UART_ESP8266_receive(void) {
 }
 ISR(USART1_RX_vect) {
     char c = UART_ESP8266_receive();
-    UART_ESP8266_send(c);
+    int row = ESP8266.row_index, col = ESP8266.col_index;
+    ESP8266.buffer[row][col] = c;
+
+    if ((col > 0 && ESP8266.buffer[row][col - 1] == 0x0D && ESP8266.buffer[row][col] == 0x0A)
+        || (col == ESP8266_COL_SIZE - 1)) {
+        ESP8266.buffer[row][col - 1] = 0; // insert null terminator
+        if (col > 1) { // advance to the next row if we have a non empty line (size is bigger than 2)
+            ESP8266.row_index = (row == ESP8266_ROW_SIZE - 1)? 0: row + 1; // LF
+        }        
+        ESP8266.col_index = 0;  // CR
+        return;
+    }
+    ESP8266.col_index++;
 }
+char * ESP8266_read_next_line() {
+    static int row = 0;
+    char * line = (char *)ESP8266.buffer[row];
+    row = (row == ESP8266_ROW_SIZE - 1)? 0: row + 1;
+    return line;
+}
+void UART_ESP8266_init(void) {
+    UBRR1H = (ESP8266_BAUD_REG_VAL>>8);
+    UBRR1L = ESP8266_BAUD_REG_VAL;
+    for (;;) {
+        UCSR1B = (1<<TXEN1);
+        UCSR1C = (3<<UCSZ10);
+        UART_ESP8266_cmd("AT+RST");
+        LCD_command(clear);
+        LCD_string("Resetting WIFI..");
+        _delay_ms(5000);
+        UART_ESP8266_cmd("ATE0");
+        LCD_command(setCursor | lineTwo);
+        LCD_string("disabling echo..");
+        _delay_ms(5000);
+        UCSR1B |= (1 << RXCIE1) | (1<<RXEN1); // enable interrupt on receive
+        LCD_command(clear);
+        LCD_string("UART:");
+        UART_ESP8266_cmd("AT");
+        _delay_ms(1000);
+        if (strcmp(ESP8266_read_next_line(), "OK") != 0) {
+            LCD_string("NO");
+            LCD_command(setCursor | lineTwo);
+            LCD_string("restarting WIFI..");
+            _delay_ms(2000);
+            continue;
+        }
+        LCD_string("OK");
+        LCD_command(setCursor | lineTwo);
+        LCD_string("Connection:");
+        UART_ESP8266_cmd("AT+CIPSTATUS");
+        _delay_ms(1000);
+        if (strcmp(ESP8266_read_next_line(), "STATUS:2") != 0
+            && strcmp(ESP8266_read_next_line(), "OK") != 0) {
+            LCD_string("NO");
+            LCD_command(setCursor | lineTwo);
+            LCD_string("restarting WIFI..");
+            _delay_ms(2000);
+            continue;
+        }
+        LCD_string("OK");
+        _delay_ms(1000);
+        UART_ESP8266_cmd("AT+CIPSTART=\"TCP\",\"35.162.70.152\",80");
+        _delay_ms(1000);
+        UART_ESP8266_cmd("AT+CIPSEND=34");
+        _delay_ms(1000);
+        UART_ESP8266_cmd("GET /add/0F02D777CF/o HTTP/1.0");
+        UART_ESP8266_cmd(0);
+        _delay_ms(1000);
+        /************************************************************************/
+        /* AT+CIPSTART="TCP","35.160.247.160",80
+        AT+CIPSEND=34
+        GET /add/0F02D777CF/i HTTP/1.1        */
+        /************************************************************************/
+        break;
+    }    
+}
+
 
 
 /************************************************************************/
@@ -442,6 +526,7 @@ int confirm_configuration_screen(int screen_index) {
 }
 
 int main(void) {
+    sei();
     LCD_init();
     T1SEC_init();
     UART_creader_init();
@@ -450,7 +535,7 @@ int main(void) {
     LCD_string(" PharmaTracker");
     _delay_ms(2000);
     enable_T1SEC();
-    sei();
+
     int current_screen = 0, next_screen;
     for(;;) {
         if (current_screen < 0) next_screen = 2; // loop back to the ID's screen
