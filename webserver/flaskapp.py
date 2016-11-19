@@ -1,58 +1,67 @@
-from flask import Flask, render_template, abort
+from flask import Flask, render_template, abort, g
 from datetime import datetime
+import sqlite3
+
+app = Flask(__name__)
+
+DATABASE = 'logs.db'
 
 
-class Event:
-    CHECK_IN, CHECK_OUT, ALARM = range(3)
+def get_db_connection():
+    database = getattr(g, '_database', None)
+    if database is None:
+        database = g._database = sqlite3.connect(DATABASE, detect_types=sqlite3.PARSE_DECLTYPES)
+    return database
 
 
-class TableEntry:
-    def __init__(self, rfid, action, timestamp):
-        self.RFID = rfid
-        self.event = action
-        self.timestamp = timestamp
+@app.teardown_appcontext
+def close_database_connection(exception):
+    database = getattr(g, '_database', None)
+    if database is not None:
+        database.close()
 
-    def get_event_info(self):
-        if self.event == Event.CHECK_IN:
+
+class Event: CHECK_IN, CHECK_OUT, ALARM = range(3)
+
+@app.context_processor
+def utility_processor():
+    def get_event_info(event):
+        if event == Event.CHECK_IN:
             return dict(description="checked in", color="success")
-        elif self.event == Event.CHECK_OUT:
+        elif event == Event.CHECK_OUT:
             return dict(description="checked out", color="warning")
-        elif self.event == Event.ALARM:
+        elif event == Event.ALARM:
             return dict(description="alarm triggered", color="danger")
         else:
             return dict(description="", color="info")
-
-table = [
-    TableEntry(4950384950, Event.CHECK_OUT, datetime(2016, 4, 30, 3, 1, 38)),
-    TableEntry(4950384950, Event.CHECK_IN, datetime(2016, 4, 30, 3, 11, 38)),
-    TableEntry(4950384950, Event.CHECK_IN, datetime(2016, 4, 30, 3, 1, 1)),
-    TableEntry(3857403840, Event.CHECK_OUT, datetime(2016, 5, 30, 3, 1, 38)),
-    TableEntry(3857403840, Event.ALARM, datetime(2016, 4, 6, 3, 1, 38)),
-    TableEntry(3857403840, Event.CHECK_OUT, datetime(2016, 7, 30, 3, 1, 38)),
-    TableEntry(3857403840, Event.ALARM, datetime(2016, 4, 8, 3, 1, 38)),
-    TableEntry(1318475940, Event.CHECK_OUT, datetime(2016, 8, 30, 3, 1, 38)),
-    TableEntry(1318475940, Event.CHECK_IN, datetime(2016, 9, 30, 3, 1, 38))
-]
-
-app = Flask(__name__)
+    return dict(get_event_info=get_event_info)
 
 
 @app.route('/')
 def main_page():
-    return render_template('table.html', entries=table)
+    cur = get_db_connection().cursor()
+    cur.execute('select rfid, event, time from log')
+    db_rows = cur.fetchall()
+    cur.close()
+    return render_template('table.html', log_rows=db_rows)
 
 
 @app.route('/add/<rfid>/<action>')
 def add_entry(rfid, action):
-    timestamp = datetime.now()
+    event = None
     if action == 'i':
-        table.append(TableEntry(rfid, Event.CHECK_IN, timestamp))
+        event = Event.CHECK_IN
     elif action == 'o':
-        table.append(TableEntry(rfid, Event.CHECK_OUT, timestamp))
+        event = Event.CHECK_OUT
     elif action == 'a':
-        table.append(TableEntry(rfid, Event.ALARM, timestamp))
+        event = Event.ALARM
     else:
         abort(400, 'invalid action')
+    connection = get_db_connection()
+    cur = connection.cursor()
+    cur.execute('insert into log values(?, ?, ?)', (rfid, event, datetime.now()))
+    cur.close()
+    connection.commit()
     return 'OK\r\n'
 
 if __name__ == '__main__':

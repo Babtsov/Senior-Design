@@ -9,7 +9,6 @@
   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
 </head>
 <body>
-
 <div class="container">
   <h2>PharmaTracker Logger</h2>
   <p>Each event detected by the PharmaTracker system is recorded in the table below.</p>
@@ -22,17 +21,15 @@
       </tr>
     </thead>
     <tbody>
-    {% for entry in entries %}
-        <tr class = "{{entry.get_event_info()['color']}}">
-            <td>{{entry.RFID}}</td>
-            <td>{{entry.get_event_info()['description']}}</td>
-            <td>{{entry.timestamp.strftime("%I:%M:%S %p %a %b %d, %Y")}}</td>
+    {% for rfid, event, time in log_rows %}
+        <tr class = "{{get_event_info(event)['color']}}">
+            <td>{{rfid}}</td>
+            <td>{{get_event_info(event)['description']}}</td>
+            <td>{{time.strftime("%I:%M:%S %p %a %b %d, %Y")}}</td>
         </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
-
 </body>
 </html>
-
