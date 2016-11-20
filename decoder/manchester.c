@@ -22,7 +22,7 @@ int get_next_sample(void) {
     while (true) {
         ssize_t bytes_read = getline(&my_string, &nbytes, input_file);
         if (bytes_read == -1) {
-            printf("\nEnd of file\n");
+            printf("End of file\n");
             exit(0);
         }
         data_ptr = strstr(my_string, ",");
@@ -73,26 +73,14 @@ char formatHex(int i) {
 
 struct {
     int buff[10];
-    int current_sample;
 } RFID;
 
-void decodeRFID(void) {
-    
-}
-
-int main(int argc, const char * argv[]) {
-    input_file = fopen(FILE_NAME, "r");
-    if (!input_file) {
-        printf("Invalid file\n");
-        return 1;
-    }
-
+bool decodeRFID(void) {
     int decoded_bit = get_first_manchester();
     int one_count = decoded_bit;
     while (one_count < 9) { // wait until we get 9 consecutive 1's
         one_count = (get_next_manchester() == 1) ? one_count + 1 : 0;
     }
-    int rfid[10] = {0};
     int col_parity[4] = {0};
     for (int i = 0; i < 10; i++) { // scan all 10 rfid characters
         int rfid_char = 0, row_parity = 0;
@@ -104,7 +92,7 @@ int main(int argc, const char * argv[]) {
         }
         row_parity += get_next_manchester();
         assert((row_parity & 1) == 0); // assert row parity is even
-        rfid[i] = rfid_char;
+        RFID.buff[i] = rfid_char;
     }
     for (int i = 3; i >= 0; i--) { // now scan all the column parities
         col_parity[i] += get_next_manchester();
@@ -112,10 +100,23 @@ int main(int argc, const char * argv[]) {
     }
     int stop_bit = get_next_manchester();
     assert(stop_bit == 0);
-    
-    for (int i = 0; i < 10; i++) {
-        printf("%c",formatHex(rfid[i]));
+    return true;
+}
+
+int main(int argc, const char * argv[]) {
+    input_file = fopen(FILE_NAME, "r");
+    if (!input_file) {
+        printf("Invalid file\n");
+        return 1;
     }
-    printf("\n");
+    while (true) {
+        bool success = decodeRFID();
+        if (success) {
+            for (int i = 0; i < 10; i++) {
+                printf("%c",formatHex(RFID.buff[i]));
+            }
+            printf("\n");
+        }
+    }
     return 0;
 }
