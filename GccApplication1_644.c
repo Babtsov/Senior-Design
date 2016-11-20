@@ -157,8 +157,8 @@ ISR(USART0_RX_vect) {
 /* UART ESP8266 Functions                                               */
 /************************************************************************/
 #define ESP8266_ROW_SIZE 10
-#define ESP8266_COL_SIZE 20
-struct {
+#define ESP8266_COL_SIZE 52
+struct ESP8266_buff {
     volatile char buffer[ESP8266_ROW_SIZE][ESP8266_COL_SIZE];
     volatile uint8_t row_index;
     volatile uint8_t col_index;
@@ -202,32 +202,49 @@ char * ESP8266_read_next_line() {
     row = (row == ESP8266_ROW_SIZE - 1)? 0: row + 1;
     return line;
 }
+int ESP8266_search_for_str(char string[]) {
+    for (int i = 0; i < ESP8266_ROW_SIZE - 1; i++) {
+        if(strcmp((char *)ESP8266.buffer[i], string) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
 void UART_ESP8266_init(void) {
     UBRR1H = (ESP8266_BAUD_REG_VAL>>8);
     UBRR1L = ESP8266_BAUD_REG_VAL;
+    UCSR1B = (1<<TXEN1) | (1<<RXEN1);
+    UCSR1C = (3<<UCSZ10);
+    UCSR1B |= (1 << RXCIE1); // enable interrupt on receive
     for (;;) {
-        UCSR1B = (1<<TXEN1);
-        UCSR1C = (3<<UCSZ10);
+        memset(&ESP8266, 0, sizeof(struct ESP8266_buff));
         UART_ESP8266_cmd("AT+RST");
         LCD_command(clear);
         LCD_string("Resetting WIFI..");
-        _delay_ms(5000);
+        _delay_ms(3000);
+        for (;;) {
+            if (ESP8266_search_for_str("ready") != -1 && ESP8266_search_for_str("WIFI CONNECTED") != -1
+            && ESP8266_search_for_str("WIFI GOT IP") != -1) {
+                LCD_string("hey");
+                break;
+            }
+        }
         UART_ESP8266_cmd("ATE0");
         LCD_command(setCursor | lineTwo);
         LCD_string("disabling echo..");
         _delay_ms(5000);
-        UCSR1B |= (1 << RXCIE1) | (1<<RXEN1); // enable interrupt on receive
+        
         LCD_command(clear);
         LCD_string("UART:");
         UART_ESP8266_cmd("AT");
-        _delay_ms(1000);
-        if (strcmp(ESP8266_read_next_line(), "OK") != 0) {
-            LCD_string("NO");
-            LCD_command(setCursor | lineTwo);
-            LCD_string("restarting WIFI..");
-            _delay_ms(2000);
-            continue;
-        }
+        _delay_ms(3000);
+//         if (strcmp(ESP8266_read_next_line(), "OK") != 0) {
+//             LCD_string("NO");
+//             LCD_command(setCursor | lineTwo);
+//             LCD_string("restarting WIFI..");
+//             _delay_ms(2000);
+//             continue;
+//         }
         LCD_string("OK");
         LCD_command(setCursor | lineTwo);
         LCD_string("Connection:");
@@ -250,11 +267,6 @@ void UART_ESP8266_init(void) {
         UART_ESP8266_cmd("GET /add/0F02D777CF/o HTTP/1.0");
         UART_ESP8266_cmd(0);
         _delay_ms(1000);
-        /************************************************************************/
-        /* AT+CIPSTART="TCP","35.160.247.160",80
-        AT+CIPSEND=34
-        GET /add/0F02D777CF/i HTTP/1.1        */
-        /************************************************************************/
         break;
     }    
 }
@@ -306,6 +318,26 @@ inline void enable_T1SEC(void) {
 }
 inline void disable_T1SEC(void) {
     TIMSK1 &= ~(1 << OCIE1A);
+}
+
+/************************************************************************/
+/* 1 KHz Timer Functions                                             */
+/************************************************************************/
+void buzzer_init(void) {
+    DDRB |= (1 << PB5);
+    TCCR0A |= (1 << WGM01);
+    TCCR0B = (1 << CS02);   // prescalar is 256 (see pg. 177)
+    OCR0A = 15;             // TOP value:  0.0005/(1/(F_CPU/prescaler))-1
+    PORTB &= ~(1 << PB5);
+}
+ISR(TIMER0_COMPA_vect) {
+    PORTB  ^= (1 << PB5);
+}
+inline void enable_buzzer(void) {
+    TIMSK0 |= 1 << OCF0A;
+}
+inline void disable_buzzer(void) {
+    TIMSK0 &= ~(1 << OCF0A);
 }
 
 /************************************************************************/
@@ -507,14 +539,18 @@ int tagsID_screen(int screen_index) {
 }
 int confirm_configuration_screen(int screen_index) {
     LCD_command(clear);
+    enable_buzzer();
     for(;;) {
         probe_card_reader();
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
+            disable_buzzer();
             return screen_index - 1;
         } else if (pressed == RIGHT) {
+            disable_buzzer();
             return screen_index + 1;
         } else if (pressed == OK) {
+            disable_buzzer();
             return 100; // go to setup screen
         }
         LCD_command(home);
@@ -530,12 +566,14 @@ int main(void) {
     LCD_init();
     T1SEC_init();
     UART_creader_init();
-    UART_ESP8266_init();
+    //UART_ESP8266_init();
     LCD_command(clear);
-    LCD_string(" PharmaTracker");
+    LCD_string(" PharmaTracker 9");
     _delay_ms(2000);
     enable_T1SEC();
-
+    T1SEC_init();
+    enable_T1SEC();
+    buzzer_init();
     int current_screen = 0, next_screen;
     for(;;) {
         if (current_screen < 0) next_screen = 2; // loop back to the ID's screen
