@@ -4,7 +4,7 @@
 #include <assert.h>
 
 FILE * fp;
-char get_next_logic(void) {
+int get_next_sample(void) {
     size_t nbytes = 1;
     char * my_string = (char *) malloc (nbytes + 1);
     ssize_t bytes_read = getline (&my_string, &nbytes, fp);
@@ -15,59 +15,75 @@ char get_next_logic(void) {
         printf("invalid file\n");
         exit(1);
     }
-    char c = my_string[0];
+    int c = my_string[0] - '0';
     free(my_string);
+    assert(c == 0 || c == 1);
     return c;
 }
-
-int detect_change(char * current) {
-    int count = 1;
-    while(true) {
-        char c = get_next_logic();
-        if (c != *current) {
-//            printf(" Count:%d\n", count);
-//            printf("%c",c);
-            *current = c;
-            break;
-        }
-//        printf("%c",c);
-        count++;
-    }
-    return count;
+int current;
+int detect_change(void) {
+    int count, sample;
+    for (count = 1; (sample = get_next_sample()) == current; count++);  // Keep counting until there is a change detected
+    current = sample;                                                   // modify current to reflect this change
+    return count;                                                       // return the # of consecutive logic values
 }
 
 #define TOLERANCE 6
+int get_first_manchester(void) {
+    current = get_next_sample();
+    while (true) {
+        int count = detect_change();
+        if (count > TOLERANCE) break;
+    }
+    return current;
+}
+
+int get_next_manchester(void) {
+    int count = detect_change();
+    if ( count <= TOLERANCE) {
+        int next_count = detect_change();
+        assert(next_count <= TOLERANCE);
+        return current;
+    } else {
+        return current ^ 1; // return the opposite of "current"
+    }
+}
+char formatHex(int i) {
+    if ( 0 <= i && i <= 9){
+        return i + '0';
+    } else if (10 <= i && i <= 15) {
+        return (i - 10) + 'A';
+    } else {
+        assert(false);
+    }
+}
+
 int main(int argc, const char * argv[]) {
-    char buff[1000] = {0};
     fp = fopen("20khz.dat", "r");
     if (!fp) {
         printf("Invalid file\n");
         return 1;
     }
-    char current = get_next_logic();
-    printf("%c",current);
-    while (true) {
-        int count = detect_change(&current);
-        if (count > TOLERANCE) break;
+
+    int decoded_bit = get_first_manchester();
+    int one_count = decoded_bit;
+    int test = 1;
+    while (one_count < 9) { // wait until we get 9 consecutive 1's
+        one_count = (get_next_manchester() == 1) ? one_count + 1 : 0;
+        test++;
     }
-    buff[0] = current;
-    for (int i = 1; i < 1000; i++) {
-        int count = detect_change(&current);
-        if ( count <= TOLERANCE) {
-            int next_count = detect_change(&current);
-            assert(next_count <= TOLERANCE);
-            buff[i] = current;
-        } else {
-            if (current == '1') {
-                buff[i] = '0';
-            } else if ( current == '0') {
-                buff[i] = '1';
-            } else {
-                assert(0);
-            }
+    for (int i = 0; i < 10; i++) { // scan all 10 rfid characters
+        int rfid_char = 0, parity = 0;
+        for (int j = 3; j >= 0; j--) { //build 4-bit hex number bit by bit
+            decoded_bit = get_next_manchester();
+            rfid_char += decoded_bit << j;
+            parity += decoded_bit;
         }
-        printf("%c",buff[i]);
-        
+        parity += get_next_manchester();
+        assert((parity & 1) == 0); // assert row parity is even
+        char final = formatHex(rfid_char);
+        printf("%c",final);
     }
+    printf("\n");
     return 0;
 }
