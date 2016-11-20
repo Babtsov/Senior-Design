@@ -2,20 +2,33 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 
-FILE * fp;
+#define FILE_NAME "20khz.csv"
+#define TOLERANCE 6
+
+FILE * input_file;
+bool parsed_valid_bool(char * str) {
+    return strcmp(str, "0\r\n") == 0   // Windows end line
+        || strcmp(str, "1\r\n") == 0   // Windows end line
+        || strcmp(str, "0\n") == 0     // Unix end line
+        || strcmp(str, "1\n") == 0;    // Unix end line
+}
+
 int get_next_sample(void) {
-    size_t nbytes = 1;
-    char * my_string = (char *) malloc (nbytes + 1);
-    ssize_t bytes_read = getline (&my_string, &nbytes, fp);
-    if (bytes_read == -1) {
-        printf("\nEnd of file\n");
-        exit(0);
-    } else if (bytes_read != 2) {
-        printf("invalid file\n");
-        exit(1);
+    size_t nbytes = 40;
+    char * my_string = (char *) calloc(nbytes + 1, sizeof(char));
+    char * data_ptr;
+    while (true) {
+        ssize_t bytes_read = getline(&my_string, &nbytes, input_file);
+        if (bytes_read == -1) {
+            printf("\nEnd of file\n");
+            exit(0);
+        }
+        data_ptr = strstr(my_string, ",");
+        if (data_ptr && parsed_valid_bool(data_ptr + 1)) break;
     }
-    int c = my_string[0] - '0';
+    int c = *(data_ptr + 1) - '0';
     free(my_string);
     assert(c == 0 || c == 1);
     return c;
@@ -28,7 +41,7 @@ int detect_change(void) {
     return count;                                                       // return the # of consecutive logic values
 }
 
-#define TOLERANCE 6
+
 int get_first_manchester(void) {
     current = get_next_sample();
     while (true) {
@@ -58,9 +71,18 @@ char formatHex(int i) {
     }
 }
 
+struct {
+    int buff[10];
+    int current_sample;
+} RFID;
+
+void decodeRFID(void) {
+    
+}
+
 int main(int argc, const char * argv[]) {
-    fp = fopen("20khz.dat", "r");
-    if (!fp) {
+    input_file = fopen(FILE_NAME, "r");
+    if (!input_file) {
         printf("Invalid file\n");
         return 1;
     }
