@@ -33,32 +33,39 @@ int get_next_sample(void) {
     assert(c == 0 || c == 1);
     return c;
 }
-int current;
-int detect_change(void) {
+
+// a struct used by detect_change, get_first_manchester, and get_next_manchester to store
+// the current logic value and the count of consecutive previous logic values.
+struct msg_detect {
+    int current_logic;      // current logic value
+    int prev_logic_count;   // previous logic count
+};
+
+void detect_change(struct msg_detect * msg) {
     int count, sample;
-    for (count = 1; (sample = get_next_sample()) == current; count++);  // Keep counting until there is a change detected
-    current = sample;                                                   // modify current to reflect this change
-    return count;                                                       // return the # of consecutive logic values
+    for (count = 1; (sample = get_next_sample()) == msg->current_logic; count++);  // Keep counting until there is a change detected
+    msg->current_logic = sample;                                                   // store the logic value after the change occured
+    msg->prev_logic_count = count;                                                 // store the # of consecutive previous logic values
 }
 
 
-int get_first_manchester(void) {
-    current = get_next_sample();
+int get_first_manchester(struct msg_detect * msg) {
+    msg->current_logic = get_next_sample();
     while (true) {
-        int count = detect_change();
-        if (count > TOLERANCE) break;
+        detect_change(msg);
+        if (msg->prev_logic_count > TOLERANCE) break;
     }
-    return current;
+    return msg->current_logic;
 }
 
-int get_next_manchester(void) {
-    int count = detect_change();
-    if ( count <= TOLERANCE) {
-        int next_count = detect_change();
-        assert(next_count <= TOLERANCE);
-        return current;
+int get_next_manchester(struct msg_detect * msg) {
+    detect_change(msg);
+    if ( msg->prev_logic_count <= TOLERANCE) {
+        detect_change(msg);
+        assert(msg->prev_logic_count <= TOLERANCE);
+        return msg->current_logic;
     } else {
-        return current ^ 1; // return the opposite of "current"
+        return (msg->current_logic) ^ 1; // return the opposite of "current"
     }
 }
 char formatHex(int i) {
@@ -76,29 +83,30 @@ struct {
 } RFID;
 
 bool decodeRFID(void) {
-    int decoded_bit = get_first_manchester();
+    struct msg_detect msg = {0, 0};
+    int decoded_bit = get_first_manchester(&msg);
     int one_count = decoded_bit;
     while (one_count < 9) { // wait until we get 9 consecutive 1's
-        one_count = (get_next_manchester() == 1) ? one_count + 1 : 0;
+        one_count = (get_next_manchester(&msg) == 1) ? one_count + 1 : 0;
     }
     int col_parity[4] = {0};
     for (int i = 0; i < 10; i++) { // scan all 10 rfid characters
         int rfid_char = 0, row_parity = 0;
         for (int j = 3; j >= 0; j--) { //build 4-bit hex number bit by bit
-            decoded_bit = get_next_manchester();
+            decoded_bit = get_next_manchester(&msg);
             rfid_char += decoded_bit << j;
             row_parity += decoded_bit;
             col_parity[j] += decoded_bit;
         }
-        row_parity += get_next_manchester();
+        row_parity += get_next_manchester(&msg);
         assert((row_parity & 1) == 0); // assert row parity is even
         RFID.buff[i] = rfid_char;
     }
     for (int i = 3; i >= 0; i--) { // now scan all the column parities
-        col_parity[i] += get_next_manchester();
+        col_parity[i] += get_next_manchester(&msg);
         assert((col_parity[i] & 1) == 0); // assert they are all even
     }
-    int stop_bit = get_next_manchester();
+    int stop_bit = get_next_manchester(&msg);
     assert(stop_bit == 0);
     return true;
 }
