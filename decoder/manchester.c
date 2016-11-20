@@ -67,22 +67,32 @@ int main(int argc, const char * argv[]) {
 
     int decoded_bit = get_first_manchester();
     int one_count = decoded_bit;
-    int test = 1;
     while (one_count < 9) { // wait until we get 9 consecutive 1's
         one_count = (get_next_manchester() == 1) ? one_count + 1 : 0;
-        test++;
     }
+    int rfid[10] = {0};
+    int col_parity[4] = {0};
     for (int i = 0; i < 10; i++) { // scan all 10 rfid characters
-        int rfid_char = 0, parity = 0;
+        int rfid_char = 0, row_parity = 0;
         for (int j = 3; j >= 0; j--) { //build 4-bit hex number bit by bit
             decoded_bit = get_next_manchester();
             rfid_char += decoded_bit << j;
-            parity += decoded_bit;
+            row_parity += decoded_bit;
+            col_parity[j] += decoded_bit;
         }
-        parity += get_next_manchester();
-        assert((parity & 1) == 0); // assert row parity is even
-        char final = formatHex(rfid_char);
-        printf("%c",final);
+        row_parity += get_next_manchester();
+        assert((row_parity & 1) == 0); // assert row parity is even
+        rfid[i] = rfid_char;
+    }
+    for (int i = 3; i >= 0; i--) { // now scan all the column parities
+        col_parity[i] += get_next_manchester();
+        assert((col_parity[i] & 1) == 0); // assert they are all even
+    }
+    int stop_bit = get_next_manchester();
+    assert(stop_bit == 0);
+    
+    for (int i = 0; i < 10; i++) {
+        printf("%c",formatHex(rfid[i]));
     }
     printf("\n");
     return 0;
