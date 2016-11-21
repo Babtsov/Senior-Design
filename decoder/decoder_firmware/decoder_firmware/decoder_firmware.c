@@ -5,9 +5,9 @@
 #define CIRCUIT_STIM    PB0
 #define SIGNAL_IN       PB1
 #define TX_PIN          PB4
-#define BAUDRATE        9600
+#define BAUDRATE        2400
 #define ONE_BIT_DELAY   (1000000/BAUDRATE)
-#define TOLERANCE       6
+#define TOLERANCE       4
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -22,33 +22,36 @@ struct {
 
 void transmit(unsigned char data) {
     PORTB &= ~(1 << TX_PIN);   // start bit
-    _delay_us(ONE_BIT_DELAY);
+    _delay_us(416);
     for(int8_t i = 0; i < 8; i++) {
-        if (bit_is_clear(data, 0)) {
-            PORTB &= ~(1 << TX_PIN);
-        } else {
+        if (data & 1) {
             PORTB |= (1 << TX_PIN);
+        } else {
+            PORTB &= ~(1 << TX_PIN);
         }
-        _delay_us(ONE_BIT_DELAY);
+        _delay_us(416);
         data >>= 1;
     }
     PORTB |= (1 << TX_PIN); // stop bit
-    _delay_us(ONE_BIT_DELAY);
+    _delay_us(416);
 }
 
 ISR(TIM0_OVF_vect) {
-    volatile static int8_t counter = 5;
+    volatile static int8_t counter = 3;
     if (counter > 0) {
         counter--;
         return;
     }
-    counter = 5;
-    RFID.data_in = (bit_is_set(PINB,SIGNAL_IN))? 1 : 0;
+    counter = 3;
+/*    PORTB ^= (1 << TX_PIN);*/
+    RFID.data_in = bit_is_set(PINB,SIGNAL_IN)? 1 : 0;
     RFID.new_data = true;
 }
-
+volatile uint8_t judge = 0;
 int8_t get_next_sample(void) {
-    while (!RFID.new_data);
+    while (!RFID.new_data) {
+        judge++;
+    }
     RFID.new_data = false;
     return RFID.data_in;
 }
@@ -62,7 +65,7 @@ struct  {
     int8_t prev_logic_count;   // previous logic count
 } data_stream;
 
-void detect_change(void) {
+inline void detect_change(void) {
     int8_t count = 1, sample;
     while (true) { // Keep counting until there is a change detected
         sample = get_next_sample();
@@ -72,13 +75,12 @@ void detect_change(void) {
     data_stream.current_logic = sample;    // store the logic value after the change occurred
     data_stream.prev_logic_count = count;  // store the # of consecutive previous logic values
 }
-
-
 int8_t get_first_manchester(void) {
     data_stream.current_logic = get_next_sample();
     while (true) {
         detect_change();
-        if (data_stream.prev_logic_count > TOLERANCE) break;
+        if (data_stream.prev_logic_count > TOLERANCE) 
+            break;
     }
     return data_stream.current_logic;
 }
@@ -87,6 +89,9 @@ int8_t get_next_manchester(void) {
     detect_change();
     if (data_stream.prev_logic_count <= TOLERANCE) {
         detect_change();
+        if (data_stream.prev_logic_count > TOLERANCE) {
+            asm("nop");
+        }
         return data_stream.current_logic;
     } else {
         return (data_stream.current_logic) ^ 1; // return the opposite of "current"
@@ -100,6 +105,7 @@ char formatHex(int8_t i) {
     }    
 }
 
+volatile uint8_t errors = 0;
 bool decodeRFID(void) {
     data_stream.current_logic = 0;
     data_stream.prev_logic_count = 0;
@@ -117,40 +123,54 @@ bool decodeRFID(void) {
             col_parity[j] += decoded_bit;
         }
         row_parity += get_next_manchester();
-        if ((row_parity & 1) != 0) return false; // assert row parity is even
+        if ((row_parity & 1) != 0) errors++; // assert row parity is even
         RFID.buff[i] = rfid_char;
     }
     for (int8_t i = 3; i >= 0; i--) { // now scan all the column parities
         col_parity[i] += get_next_manchester();
-        if((col_parity[i] & 1) != 0) return false; // assert they are all even
+        if((col_parity[i] & 1) != 0) errors++; // assert they are all even
     }
     int8_t stop_bit = get_next_manchester();
-    if (stop_bit != 0) return false;
+    if (stop_bit != 0) errors++;
     return true;
 }
 
 void init_PWM (void) {
-	TCCR0A |= (1<<WGM00 | 1<<WGM01 | 1<<COM0A0);
-	TCCR0B |= (1<<WGM02 | 1<<CS00 | 1<<FOC0A);
-	TIMSK0 |= (1<<TOIE0); 
-/*	PCMSK  |= (1<<PCINT1);*/
-/*	GIMSK  |= (1<<PCIE);*/
-	OCR0A   = PWM_VAL;
-} 
+    TCCR0A |= (1<<WGM00 | 1<<WGM01 | 1<<COM0A0);
+    TCCR0B |= (1<<WGM02 | 1<<CS00 | 1<<FOC0A);
+    TIMSK0 |= (1<<TOIE0);
+    /*  PCMSK  |= (1<<PCINT1);*/
+    /*  GIMSK  |= (1<<PCIE);*/
+    OCR0A   = PWM_VAL;
+}
+int8_t manchester[40] = {0};
+void output_manchester(void) {
+    int8_t first = get_first_manchester();
+    manchester[0] = first;
+    for (int i = 1; i < 40; i++) {
+        manchester[i] = get_next_manchester();
+    }
+    
+}
 
 int main (void) {
-	DDRB |= (1<<CIRCUIT_STIM) | (1<<TX_PIN);
-	init_PWM();
-	sei();
+    DDRB |= (1<<CIRCUIT_STIM) | (1<<TX_PIN);
+    init_PWM();
+    sei();
+//     get_first_manchester();
+//     output_manchester();
+
     while (true) {
-        bool success = decodeRFID();
-        if (!success) continue;
-        cli();
-        transmit(0x0A);
-        for (int i = 0; i < 10; i++) {
-            transmit(formatHex(RFID.buff[i]));
-        }
-        transmit(0x0D);
-        sei();
+            while(RFID.data_in == 0x01);
+            while(RFID.data_in == 0x00);
+         decodeRFID();
+         //for (volatile int i = 0; i< 100; i++);
+         asm("nop");
+//         if (!success) continue;    
+//             transmit(0x0A);
+//             for (int i = 0; i < 10; i++) {
+//                 transmit(formatHex(RFID.buff[i]));
+//             }
+//             transmit(0x0D);  
     }
 }
