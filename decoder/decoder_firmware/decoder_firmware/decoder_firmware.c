@@ -1,18 +1,16 @@
-
+/* PharmaTracker decoder firmware */
 #define F_CPU 9600000UL
-#define PWM_VAL 38
-
-#define CIRCUIT_STIM    PB0
-#define SIGNAL_IN       PB1
-#define TX_PIN          PB4
-#define BAUDRATE        2400
-#define ONE_BIT_DELAY   (1000000/BAUDRATE)
-#define TOLERANCE       4
-
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
 #include <stdbool.h>
+
+#define PWM_COUNT           38
+#define SQUARE_WAVE_125KHZ  PB0
+#define SIGNAL_INPUT        PB1
+#define TRANSMIT_PIN        PB4
+#define TOLERANCE           4
+#define BAUD_DELAY          416
 
 struct {
     volatile int8_t data_in;
@@ -20,20 +18,28 @@ struct {
     int8_t buff[10];
 } RFID;
 
+inline void waitfor_stable_signal(void) {
+    while(RFID.data_in == 0x01);
+    while(RFID.data_in == 0x00);
+}
+
+/************************************************************************/
+/* Transmit the decoded RFID with baud rate of 2400                     */
+/************************************************************************/
 void transmit(unsigned char data) {
-    PORTB &= ~(1 << TX_PIN);   // start bit
-    _delay_us(416);
+    PORTB &= ~(1 << TRANSMIT_PIN);   // start bit
+    _delay_us(BAUD_DELAY);
     for(int8_t i = 0; i < 8; i++) {
         if (data & 1) {
-            PORTB |= (1 << TX_PIN);
+            PORTB |= (1 << TRANSMIT_PIN);
         } else {
-            PORTB &= ~(1 << TX_PIN);
+            PORTB &= ~(1 << TRANSMIT_PIN);
         }
-        _delay_us(416);
+        _delay_us(BAUD_DELAY);
         data >>= 1;
     }
-    PORTB |= (1 << TX_PIN); // stop bit
-    _delay_us(416);
+    PORTB |= (1 << TRANSMIT_PIN); // stop bit
+    _delay_us(BAUD_DELAY);
 }
 
 ISR(TIM0_OVF_vect) {
@@ -43,15 +49,11 @@ ISR(TIM0_OVF_vect) {
         return;
     }
     counter = 3;
-/*    PORTB ^= (1 << TX_PIN);*/
-    RFID.data_in = bit_is_set(PINB,SIGNAL_IN)? 1 : 0;
+    RFID.data_in = bit_is_set(PINB,SIGNAL_INPUT)? 1 : 0;
     RFID.new_data = true;
 }
-volatile uint8_t judge = 0;
 int8_t get_next_sample(void) {
-    while (!RFID.new_data) {
-        judge++;
-    }
+    while (!RFID.new_data);
     RFID.new_data = false;
     return RFID.data_in;
 }
@@ -75,6 +77,7 @@ inline void detect_change(void) {
     data_stream.current_logic = sample;    // store the logic value after the change occurred
     data_stream.prev_logic_count = count;  // store the # of consecutive previous logic values
 }
+
 int8_t get_first_manchester(void) {
     data_stream.current_logic = get_next_sample();
     while (true) {
@@ -89,14 +92,12 @@ int8_t get_next_manchester(void) {
     detect_change();
     if (data_stream.prev_logic_count <= TOLERANCE) {
         detect_change();
-        if (data_stream.prev_logic_count > TOLERANCE) {
-            asm("nop");
-        }
         return data_stream.current_logic;
     } else {
         return (data_stream.current_logic) ^ 1; // return the opposite of "current"
     }
 }
+
 char formatHex(int8_t i) {
     if ( 0 <= i && i <= 9){
         return i + '0';
@@ -105,8 +106,7 @@ char formatHex(int8_t i) {
     }    
 }
 
-volatile uint8_t errors = 0;
-bool decodeRFID(void) {
+bool successfully_decoded(void) {
     data_stream.current_logic = 0;
     data_stream.prev_logic_count = 0;
     int8_t one_count = get_first_manchester();
@@ -135,49 +135,26 @@ bool decodeRFID(void) {
     return true;
 }
 
-void init_PWM (void) {
+void PWM_init(void) {
     TCCR0A |= (1<<WGM00 | 1<<WGM01 | 1<<COM0A0);
     TCCR0B |= (1<<WGM02 | 1<<CS00 | 1<<FOC0A);
     TIMSK0 |= (1<<TOIE0);
-    /*  PCMSK  |= (1<<PCINT1);*/
-    /*  GIMSK  |= (1<<PCIE);*/
-    OCR0A   = PWM_VAL;
-}
-int8_t manchester[40] = {0};
-void output_manchester(void) {
-    int8_t first = get_first_manchester();
-    manchester[0] = first;
-    for (int i = 1; i < 40; i++) {
-        manchester[i] = get_next_manchester();
-    }
-    
+    OCR0A   = PWM_COUNT;
 }
 
 int main (void) {
-    DDRB |= (1<<CIRCUIT_STIM) | (1<<TX_PIN);
-    init_PWM();
+    DDRB |= (1<<SQUARE_WAVE_125KHZ) | (1<<TRANSMIT_PIN);
+    PWM_init();
     sei();
-//     get_first_manchester();
-//     output_manchester();
-
     while (true) {
-            while(RFID.data_in == 0x01);
-            while(RFID.data_in == 0x00);
-         if(decodeRFID()) {
-            cli();
-            transmit(0x0A);
-            for (int i = 0; i < 10; i++) {
-                transmit(formatHex(RFID.buff[i]));
-            }
-            transmit(0x0D);
-            sei();
-         }
-         //for (volatile int i = 0; i< 100; i++);
-//         if (!success) continue;    
-//             transmit(0x0A);
-//             for (int i = 0; i < 10; i++) {
-//                 transmit(formatHex(RFID.buff[i]));
-//             }
-//             transmit(0x0D);  
+        waitfor_stable_signal();
+        if(!successfully_decoded()) continue;
+        cli();
+        transmit(0x0A);
+        for (int i = 0; i < 10; i++) {
+            transmit(formatHex(RFID.buff[i]));
+        }
+        transmit(0x0D);
+        sei();
     }
 }
