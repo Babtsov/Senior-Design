@@ -123,15 +123,15 @@ bool decodeRFID(void) {
             col_parity[j] += decoded_bit;
         }
         row_parity += get_next_manchester();
-        if ((row_parity & 1) != 0) errors++; // assert row parity is even
+        if ((row_parity & 1) != 0) return false; // assert row parity is even
         RFID.buff[i] = rfid_char;
     }
     for (int8_t i = 3; i >= 0; i--) { // now scan all the column parities
         col_parity[i] += get_next_manchester();
-        if((col_parity[i] & 1) != 0) errors++; // assert they are all even
+        if((col_parity[i] & 1) != 0) return false; // assert they are all even
     }
     int8_t stop_bit = get_next_manchester();
-    if (stop_bit != 0) errors++;
+    if (stop_bit != 0) return false;
     return true;
 }
 
@@ -163,9 +163,10 @@ int main (void) {
     while (true) {
             while(RFID.data_in == 0x01);
             while(RFID.data_in == 0x00);
-         decodeRFID();
+         if(decodeRFID()) {
+             asm("nop");
+         }
          //for (volatile int i = 0; i< 100; i++);
-         asm("nop");
 //         if (!success) continue;    
 //             transmit(0x0A);
 //             for (int i = 0; i < 10; i++) {
