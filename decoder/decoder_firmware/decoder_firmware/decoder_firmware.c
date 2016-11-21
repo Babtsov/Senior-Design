@@ -20,20 +20,20 @@ struct {
     int8_t buff[10];
 } RFID;
 
-void transmit (unsigned char data) {
-	PORTB &= ~(1 << TX_PIN);   // start bit
+void transmit(unsigned char data) {
+    PORTB &= ~(1 << TX_PIN);   // start bit
     _delay_us(ONE_BIT_DELAY);
-	for(int8_t i = 0; i < 8; i++) {
-		if (bit_is_clear(data, 0)) {
-			PORTB &= ~(1 << TX_PIN);
-		} else {
-			PORTB |= (1 << TX_PIN);
-        }            
-		_delay_us(ONE_BIT_DELAY);
-		data >>= 1;
-	}
-	PORTB |= (1 << TX_PIN); // stop bit
-	_delay_us(ONE_BIT_DELAY);
+    for(int8_t i = 0; i < 8; i++) {
+        if (bit_is_clear(data, 0)) {
+            PORTB &= ~(1 << TX_PIN);
+        } else {
+            PORTB |= (1 << TX_PIN);
+        }
+        _delay_us(ONE_BIT_DELAY);
+        data >>= 1;
+    }
+    PORTB |= (1 << TX_PIN); // stop bit
+    _delay_us(ONE_BIT_DELAY);
 }
 
 ISR(TIM0_OVF_vect) {
@@ -53,42 +53,43 @@ int8_t get_next_sample(void) {
     return RFID.data_in;
 }
 
-// a struct used by detect_change, get_first_manchester, and get_next_manchester to store
-// the current logic value and the count of consecutive previous logic values.
+/************************************************************************/
+/* data_stream is used by the Manchester decoding functions,            */
+/* to keep track of the state of the information stream                 */
+/************************************************************************/
 struct  {
-    int8_t current_logic;      // current logic value
+    int8_t current_logic;      // current logic value (1 or 0)
     int8_t prev_logic_count;   // previous logic count
-} logic;
+} data_stream;
 
 void detect_change(void) {
     int8_t count = 1, sample;
-    // Keep counting until there is a change detected
-    while (true) {
+    while (true) { // Keep counting until there is a change detected
         sample = get_next_sample();
-        if (sample != logic.current_logic) break;
+        if (sample != data_stream.current_logic) break;
         count++;
     }
-    logic.current_logic = sample;    // store the logic value after the change occurred
-    logic.prev_logic_count = count;  // store the # of consecutive previous logic values
+    data_stream.current_logic = sample;    // store the logic value after the change occurred
+    data_stream.prev_logic_count = count;  // store the # of consecutive previous logic values
 }
 
 
 int8_t get_first_manchester(void) {
-    logic.current_logic = get_next_sample();
+    data_stream.current_logic = get_next_sample();
     while (true) {
         detect_change();
-        if (logic.prev_logic_count > TOLERANCE) break;
+        if (data_stream.prev_logic_count > TOLERANCE) break;
     }
-    return logic.current_logic;
+    return data_stream.current_logic;
 }
 
 int8_t get_next_manchester(void) {
     detect_change();
-    if ( logic.prev_logic_count <= TOLERANCE) {
+    if (data_stream.prev_logic_count <= TOLERANCE) {
         detect_change();
-        return logic.current_logic;
+        return data_stream.current_logic;
     } else {
-        return (logic.current_logic) ^ 1; // return the opposite of "current"
+        return (data_stream.current_logic) ^ 1; // return the opposite of "current"
     }
 }
 char formatHex(int8_t i) {
@@ -100,8 +101,8 @@ char formatHex(int8_t i) {
 }
 
 bool decodeRFID(void) {
-    logic.current_logic = 0;
-    logic.prev_logic_count = 0;
+    data_stream.current_logic = 0;
+    data_stream.prev_logic_count = 0;
     int8_t one_count = get_first_manchester();
     while (one_count < 9) { // wait until we get 9 consecutive 1's
         one_count = (get_next_manchester() == 1) ? one_count + 1 : 0;
