@@ -164,7 +164,13 @@ int main (void) {
             while(RFID.data_in == 0x01);
             while(RFID.data_in == 0x00);
          if(decodeRFID()) {
-             asm("nop");
+            cli();
+            transmit(0x0A);
+            for (int i = 0; i < 10; i++) {
+                transmit(formatHex(RFID.buff[i]));
+            }
+            transmit(0x0D);
+            sei();
          }
          //for (volatile int i = 0; i< 100; i++);
 //         if (!success) continue;    
