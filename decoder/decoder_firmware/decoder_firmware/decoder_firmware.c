@@ -15,8 +15,8 @@
 #include <stdbool.h>
 
 struct {
-    int8_t data_in;
-    bool locked;
+    volatile int8_t data_in;
+    volatile bool new_data;
     int8_t buff[10];
 } RFID;
 
@@ -44,28 +44,33 @@ void transmit (unsigned char data) {
 }
 
 ISR(TIM0_OVF_vect) {
-    static int8_t counter = 5;
+    volatile static int8_t counter = 5;
     if (counter > 0) {
         counter--;
         return;
     }
     counter = 5;
-    RFID.data_in = PINB & (1 << SIGNAL_IN);
-    RFID.locked = false;
+    RFID.data_in = (bit_is_set(PINB,SIGNAL_IN))? 1 : 0;
+    RFID.new_data = true;
 }
 
 int8_t get_next_sample(void) {
-    while (RFID.locked);
-    RFID.locked = true;
+    while (!RFID.new_data);
+    RFID.new_data = false;
     return RFID.data_in;
 }
 
 
 void detect_change(struct msg_detect * msg) {
-    int8_t count, sample;
-    for (count = 1; (sample = get_next_sample()) == msg->current_logic; count++);  // Keep counting until there is a change detected
-    msg->current_logic = sample;                                                   // store the logic value after the change occured
-    msg->prev_logic_count = count;                                                 // store the # of consecutive previous logic values
+    int8_t count = 1, sample;
+    // Keep counting until there is a change detected
+    while (true) {
+        sample = get_next_sample();
+        if (sample != msg->current_logic) break;
+        count++;
+    }
+    msg->current_logic = sample;    // store the logic value after the change occurred
+    msg->prev_logic_count = count;  // store the # of consecutive previous logic values
 }
 
 
@@ -132,7 +137,7 @@ void init_PWM (void)
 	TIMSK0 |= (1<<TOIE0); 
 	PCMSK  |= (1<<PCINT1);
 	GIMSK  |= (1<<PCIE);
-	OCR0A   = PWM_VAL; 
+	OCR0A   = PWM_VAL;
 } 
 
 int main (void) {
