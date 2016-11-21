@@ -20,13 +20,6 @@ struct {
     int8_t buff[10];
 } RFID;
 
-// a struct used by detect_change, get_first_manchester, and get_next_manchester to store
-// the current logic value and the count of consecutive previous logic values.
-struct msg_detect {
-    int8_t current_logic;      // current logic value
-    int8_t prev_logic_count;   // previous logic count
-};
-
 void transmit (unsigned char data) {
 	PORTB &= ~(1 << TX_PIN);   // start bit
     _delay_us(ONE_BIT_DELAY);
@@ -60,37 +53,42 @@ int8_t get_next_sample(void) {
     return RFID.data_in;
 }
 
+// a struct used by detect_change, get_first_manchester, and get_next_manchester to store
+// the current logic value and the count of consecutive previous logic values.
+struct  {
+    int8_t current_logic;      // current logic value
+    int8_t prev_logic_count;   // previous logic count
+} logic;
 
-void detect_change(struct msg_detect * msg) {
+void detect_change(void) {
     int8_t count = 1, sample;
     // Keep counting until there is a change detected
     while (true) {
         sample = get_next_sample();
-        if (sample != msg->current_logic) break;
+        if (sample != logic.current_logic) break;
         count++;
     }
-    msg->current_logic = sample;    // store the logic value after the change occurred
-    msg->prev_logic_count = count;  // store the # of consecutive previous logic values
+    logic.current_logic = sample;    // store the logic value after the change occurred
+    logic.prev_logic_count = count;  // store the # of consecutive previous logic values
 }
 
 
-int8_t get_first_manchester(struct msg_detect * msg) {
-    msg->current_logic = get_next_sample();
+int8_t get_first_manchester(void) {
+    logic.current_logic = get_next_sample();
     while (true) {
-        detect_change(msg);
-        if (msg->prev_logic_count > TOLERANCE) break;
+        detect_change();
+        if (logic.prev_logic_count > TOLERANCE) break;
     }
-    return msg->current_logic;
+    return logic.current_logic;
 }
 
-int8_t get_next_manchester(struct msg_detect * msg) {
-    detect_change(msg);
-    if ( msg->prev_logic_count <= TOLERANCE) {
-        detect_change(msg);
-        //assert(msg->prev_logic_count <= TOLERANCE);
-        return msg->current_logic;
+int8_t get_next_manchester(void) {
+    detect_change();
+    if ( logic.prev_logic_count <= TOLERANCE) {
+        detect_change();
+        return logic.current_logic;
     } else {
-        return (msg->current_logic) ^ 1; // return the opposite of "current"
+        return (logic.current_logic) ^ 1; // return the opposite of "current"
     }
 }
 char formatHex(int8_t i) {
@@ -102,60 +100,56 @@ char formatHex(int8_t i) {
 }
 
 bool decodeRFID(void) {
-    struct msg_detect msg = {0, 0};
-    int8_t decoded_bit = get_first_manchester(&msg);
-    int8_t one_count = decoded_bit;
+    logic.current_logic = 0;
+    logic.prev_logic_count = 0;
+    int8_t one_count = get_first_manchester();
     while (one_count < 9) { // wait until we get 9 consecutive 1's
-        one_count = (get_next_manchester(&msg) == 1) ? one_count + 1 : 0;
+        one_count = (get_next_manchester() == 1) ? one_count + 1 : 0;
     }
     int8_t col_parity[4] = {0};
     for (int8_t i = 0; i < 10; i++) { // scan all 10 rfid characters
         int8_t rfid_char = 0, row_parity = 0;
         for (int8_t j = 3; j >= 0; j--) { //build 4-bit hex number bit by bit
-            decoded_bit = get_next_manchester(&msg);
+            int8_t decoded_bit = get_next_manchester();
             rfid_char += decoded_bit << j;
             row_parity += decoded_bit;
             col_parity[j] += decoded_bit;
         }
-        row_parity += get_next_manchester(&msg);
+        row_parity += get_next_manchester();
         if ((row_parity & 1) != 0) return false; // assert row parity is even
         RFID.buff[i] = rfid_char;
     }
     for (int8_t i = 3; i >= 0; i--) { // now scan all the column parities
-        col_parity[i] += get_next_manchester(&msg);
-        if((col_parity[i] & 1) == 0) return false; // assert they are all even
+        col_parity[i] += get_next_manchester();
+        if((col_parity[i] & 1) != 0) return false; // assert they are all even
     }
-    int8_t stop_bit = get_next_manchester(&msg);
+    int8_t stop_bit = get_next_manchester();
     if (stop_bit != 0) return false;
     return true;
 }
 
-void init_PWM (void)
-{
+void init_PWM (void) {
 	TCCR0A |= (1<<WGM00 | 1<<WGM01 | 1<<COM0A0);
 	TCCR0B |= (1<<WGM02 | 1<<CS00 | 1<<FOC0A);
 	TIMSK0 |= (1<<TOIE0); 
-	PCMSK  |= (1<<PCINT1);
-	GIMSK  |= (1<<PCIE);
+/*	PCMSK  |= (1<<PCINT1);*/
+/*	GIMSK  |= (1<<PCIE);*/
 	OCR0A   = PWM_VAL;
 } 
 
 int main (void) {
 	DDRB |= (1<<CIRCUIT_STIM) | (1<<TX_PIN);
-
-	init_PWM(); //Initialize PWM.
-	
+	init_PWM();
 	sei();
     while (true) {
         bool success = decodeRFID();
-        if (success) {
-            cli();
-            transmit(0x0A);
-            for (int i = 0; i < 10; i++) {
-                transmit(formatHex(RFID.buff[i]));
-            }
-            transmit(0x0D);
-            sei();
+        if (!success) continue;
+        cli();
+        transmit(0x0A);
+        for (int i = 0; i < 10; i++) {
+            transmit(formatHex(RFID.buff[i]));
         }
+        transmit(0x0D);
+        sei();
     }
 }
