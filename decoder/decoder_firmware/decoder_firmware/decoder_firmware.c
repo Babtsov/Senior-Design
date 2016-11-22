@@ -10,7 +10,7 @@
 #define SIGNAL_INPUT        PB1
 #define TRANSMIT_PIN        PB4
 #define TOLERANCE           4
-#define BAUD_DELAY          416
+#define BAUD_DELAY          412
 
 struct {
     volatile int8_t data_in;
