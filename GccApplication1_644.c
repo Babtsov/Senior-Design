@@ -42,17 +42,17 @@ button_t probe_buttons(void) {
     button_t pressed;
     if (!(PINB & 0x1F)) {
         return NONE;
-        } else if (PINB & (1<<PB0)) {
+    } else if (PINB & (1<<PB0)) {
         pressed = RIGHT;
-        } else if (PINB & (1<<PB1)) {
+    } else if (PINB & (1<<PB1)) {
         pressed = LEFT;
-        } else if (PINB & (1<<PB2)) {
+    } else if (PINB & (1<<PB2)) {
         pressed = UP;
-        } else if (PINB & (1<<PB3)) {
+    } else if (PINB & (1<<PB3)) {
         pressed = DOWN;
-        } else if (PINB & (1<<PB4)) {
+    } else if (PINB & (1<<PB4)) {
         pressed = OK;
-        } else {
+    } else {
         pressed = INVALID;
     }
     _delay_ms(200);
@@ -163,6 +163,13 @@ inline bool isready_creader_buff(void) {
 }
 inline void release_creader_buff(void) {
     creader_buff.locked = false;
+}
+char * get_card_id(uint8_t index) {
+    char * rfid = cards[index].id;
+    return  rfid + 1; // actually return a pointer to index 1 as index 0 is always 0x00
+}
+inline char get_card_status(uint8_t index) {
+    return (cards[index].checked_out)? 'o' : 'i';
 }
 ISR(USART0_RX_vect) {
     char c = UART_creader_receive();
@@ -275,6 +282,23 @@ bool isConnected(void) {
     }
 }
 
+#define SERVER_IP 35.162.70.152
+
+void upload_to_server(char * rfid, char action) {
+    static char HTTP_request_buffer[] = "GET /add/##########/& HTTP/1.0";
+    for (int i = 0 ; i < 10; i++) { // copy the RFID to the buffer (starting at first # which is index 9)
+        HTTP_request_buffer[9 + i] = rfid[i];
+    }
+    HTTP_request_buffer[20] = action; // copy the action (index 20 which is &)
+    UART_ESP8266_cmd("AT+CIPSTART=\"TCP\",\"35.162.70.152\",80");
+    _delay_ms(1000);
+    UART_ESP8266_cmd("AT+CIPSEND=34");
+    _delay_ms(1000);
+    UART_ESP8266_cmd(HTTP_request_buffer);
+    UART_ESP8266_cmd(0);
+    _delay_ms(1000);
+}
+
 void UART_ESP8266_init(void) {
     UBRR1H = (ESP8266_BAUD_REG_VAL>>8);
     UBRR1L = ESP8266_BAUD_REG_VAL;
@@ -295,30 +319,11 @@ void UART_ESP8266_init(void) {
             _delay_ms(1000);
             continue;
         }
-        if (!isConnected()) continue; // user pressed reset, so restart ESP8266
+        UART_ESP8266_cmd("ATE0"); // disable echo
+        _delay_ms(1000);
+        if (!isConnected())       // check if we have Internet connectivity
+            continue;             // user pressed reset, so restart ESP8266
         _delay_ms(2000);
-//         UART_ESP8266_cmd("ATE0");
-//         LCD_command(setCursor | lineTwo);
-//         LCD_string("disabling echo..");
-//         _delay_ms(5000);
-//  
-//         LCD_command(clear);
-//         LCD_string("UART:");
-//         UART_ESP8266_cmd("AT");
-//         _delay_ms(3000);
-//         LCD_string("OK");
-//         LCD_command(setCursor | lineTwo);
-//         LCD_string("Connection:");
-//         UART_ESP8266_cmd("AT+CIPSTATUS");
-//         _delay_ms(1000);
-//         LCD_string("OK");
-//         _delay_ms(1000);
-        UART_ESP8266_cmd("AT+CIPSTART=\"TCP\",\"35.162.70.152\",80");
-        _delay_ms(1000);
-        UART_ESP8266_cmd("AT+CIPSEND=34");
-        _delay_ms(1000);
-        UART_ESP8266_cmd("GET /add/0Q02D777CF/o HTTP/1.0");
-        UART_ESP8266_cmd(0);
         break;
     }    
 }
@@ -481,12 +486,13 @@ void probe_card_reader(void) {
         LCD_string(" detected!");
         LCD_command(setCursor | lineTwo);
         LCD_substring(cards[card_index].id, 1, CREADER_BUFF_SIZE - 1);
+        upload_to_server(get_card_id(card_index), get_card_status(card_index));
     } else {
         LCD_string("This card is");
         LCD_command(setCursor | lineTwo);
         LCD_string("not registered.");
+        _delay_ms(500);
     }
-    _delay_ms(3000);
     LCD_command(clear);
     release_creader_buff();
 }
