@@ -20,9 +20,9 @@ struct {
     volatile uint16_t time_left;    // how much time remaining until medicine goes bad
     bool checked_out;               // is this medicine currently checked out
 } cards[CARD_COUNT] = {             // default initializations mainly used for debugging
-    [0].id = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x36, 0x0d, 0x00},
+    [0].id = {0x0a, 0x33, 0x31, 0x30, 0x30, 0x33, 0x37, 0x44, 0x39, 0x33, 0x44, 0x0D},
     [0].max_time = 2000, [0].time_left = 2000, [0].checked_out = false,
-    [1].id = {0x0a, 0x30, 0x46, 0x30, 0x32, 0x44, 0x37, 0x37, 0x37, 0x43, 0x46, 0x0d, 0x00},
+    [1].id = {0x0a, 0x36, 0x36, 0x30, 0x30, 0x36, 0x43, 0x34, 0x42, 0x37, 0x46, 0x0D},
     [1].max_time = 68, [1].time_left = 68, [1].checked_out = false
 };
 
@@ -31,6 +31,34 @@ struct {
     volatile uint8_t index;                         // pointer to an unoccupied slot
     volatile bool locked;                           // buffer is locked from modifications by the ISR
 } creader_buff;
+
+
+/************************************************************************/
+/* Buttons Functions                                                    */
+/************************************************************************/
+typedef enum {NONE, LEFT, RIGHT, UP, DOWN, OK, INVALID} button_t;
+
+button_t probe_buttons(void) {
+    button_t pressed;
+    if (!(PINB & 0x1F)) {
+        return NONE;
+        } else if (PINB & (1<<PB0)) {
+        pressed = RIGHT;
+        } else if (PINB & (1<<PB1)) {
+        pressed = LEFT;
+        } else if (PINB & (1<<PB2)) {
+        pressed = UP;
+        } else if (PINB & (1<<PB3)) {
+        pressed = DOWN;
+        } else if (PINB & (1<<PB4)) {
+        pressed = OK;
+        } else {
+        pressed = INVALID;
+    }
+    _delay_ms(200);
+    return pressed;
+}
+
 
 /************************************************************************/
 /* LCD Functions                                                        */
@@ -156,7 +184,7 @@ ISR(USART0_RX_vect) {
 /************************************************************************/
 /* UART ESP8266 Functions                                               */
 /************************************************************************/
-#define ESP8266_ROW_SIZE 10
+#define ESP8266_ROW_SIZE 15
 #define ESP8266_COL_SIZE 52
 struct ESP8266_buff {
     volatile char buffer[ESP8266_ROW_SIZE][ESP8266_COL_SIZE];
@@ -184,32 +212,69 @@ ISR(USART1_RX_vect) {
     char c = UART_ESP8266_receive();
     int row = ESP8266.row_index, col = ESP8266.col_index;
     ESP8266.buffer[row][col] = c;
-
     if ((col > 0 && ESP8266.buffer[row][col - 1] == 0x0D && ESP8266.buffer[row][col] == 0x0A)
         || (col == ESP8266_COL_SIZE - 1)) {
         ESP8266.buffer[row][col - 1] = 0; // insert null terminator
-        if (col > 1) { // advance to the next row if we have a non empty line (size is bigger than 2)
-            ESP8266.row_index = (row == ESP8266_ROW_SIZE - 1)? 0: row + 1; // LF
-        }        
+        ESP8266.row_index = (row == ESP8266_ROW_SIZE - 1)? 0: row + 1;        
         ESP8266.col_index = 0;  // CR
         return;
     }
     ESP8266.col_index++;
 }
-char * ESP8266_read_next_line() {
-    static int row = 0;
-    char * line = (char *)ESP8266.buffer[row];
-    row = (row == ESP8266_ROW_SIZE - 1)? 0: row + 1;
-    return line;
-}
+
 int ESP8266_search_for_str(char string[]) {
     for (int i = 0; i < ESP8266_ROW_SIZE - 1; i++) {
         if(strcmp((char *)ESP8266.buffer[i], string) == 0) {
+            ESP8266.buffer[i][0] = 0; // clear the string
             return i;
         }
     }
     return -1;
 }
+
+bool ESP8266_find(char string[]) {
+    for (int i = 0; i < ESP8266_ROW_SIZE - 1; i++) {
+        if(strcmp((char *)ESP8266.buffer[i], string) == 0) {
+            ESP8266.buffer[i][0] = 0; // clear the string
+            return true;
+        }
+    }
+    return false;
+}
+
+void ESP8266_clear_buffer(void) {
+    for (int i = 0; i < ESP8266_ROW_SIZE - 1; i++) {
+        ESP8266.buffer[i][0] = 0;
+    }
+    ESP8266.row_index = 0;
+    ESP8266.col_index = 0;
+}
+
+//keeps polling ESP8266 connection status until connected or user pressed "back" to cancel
+bool isConnected(void) { 
+    LCD_command(clear);
+    LCD_string("Connection:");
+    for (;;) {
+        UART_ESP8266_cmd("AT+CIPSTATUS");
+        _delay_ms(2000);
+        LCD_command(setCursor | lineTwo);
+        if (ESP8266_find("STATUS:2")) {
+            LCD_string("Connected    ");
+            ESP8266_clear_buffer();
+            return true;
+        } else if (ESP8266_find("STATUS:5")) {
+            LCD_string("Disconnected");
+            ESP8266_clear_buffer();
+        } else {
+            LCD_string("No response.....");
+        }
+        button_t pressed = probe_buttons();
+        if (pressed == LEFT) {
+            return false;
+        }
+    }
+}
+
 void UART_ESP8266_init(void) {
     UBRR1H = (ESP8266_BAUD_REG_VAL>>8);
     UBRR1L = ESP8266_BAUD_REG_VAL;
@@ -217,86 +282,45 @@ void UART_ESP8266_init(void) {
     UCSR1C = (3<<UCSZ10);
     UCSR1B |= (1 << RXCIE1); // enable interrupt on receive
     for (;;) {
-        memset(&ESP8266, 0, sizeof(struct ESP8266_buff));
+        ESP8266_clear_buffer();
         UART_ESP8266_cmd("AT+RST");
         LCD_command(clear);
         LCD_string("Resetting WIFI..");
-        _delay_ms(3000);
-        for (;;) {
-            if (ESP8266_search_for_str("ready") != -1 && ESP8266_search_for_str("WIFI CONNECTED") != -1
-            && ESP8266_search_for_str("WIFI GOT IP") != -1) {
-                LCD_string("hey");
-                break;
-            }
-        }
-        UART_ESP8266_cmd("ATE0");
-        LCD_command(setCursor | lineTwo);
-        LCD_string("disabling echo..");
-        _delay_ms(5000);
-        
-        LCD_command(clear);
-        LCD_string("UART:");
-        UART_ESP8266_cmd("AT");
-        _delay_ms(3000);
-//         if (strcmp(ESP8266_read_next_line(), "OK") != 0) {
-//             LCD_string("NO");
-//             LCD_command(setCursor | lineTwo);
-//             LCD_string("restarting WIFI..");
-//             _delay_ms(2000);
-//             continue;
-//         }
-        LCD_string("OK");
-        LCD_command(setCursor | lineTwo);
-        LCD_string("Connection:");
-        UART_ESP8266_cmd("AT+CIPSTATUS");
-        _delay_ms(1000);
-        if (strcmp(ESP8266_read_next_line(), "STATUS:2") != 0
-            && strcmp(ESP8266_read_next_line(), "OK") != 0) {
-            LCD_string("NO");
+        _delay_ms(2000);
+        if (!ESP8266_find("ready")) { // seems like the ESP8266 didn't respond...
+            LCD_command(clear);
+            LCD_string("timeout/UART err");
             LCD_command(setCursor | lineTwo);
-            LCD_string("restarting WIFI..");
-            _delay_ms(2000);
+            LCD_string("restarting...");
+            _delay_ms(1000);
             continue;
         }
-        LCD_string("OK");
-        _delay_ms(1000);
+        if (!isConnected()) continue; // user pressed reset, so restart ESP8266
+        _delay_ms(2000);
+//         UART_ESP8266_cmd("ATE0");
+//         LCD_command(setCursor | lineTwo);
+//         LCD_string("disabling echo..");
+//         _delay_ms(5000);
+//  
+//         LCD_command(clear);
+//         LCD_string("UART:");
+//         UART_ESP8266_cmd("AT");
+//         _delay_ms(3000);
+//         LCD_string("OK");
+//         LCD_command(setCursor | lineTwo);
+//         LCD_string("Connection:");
+//         UART_ESP8266_cmd("AT+CIPSTATUS");
+//         _delay_ms(1000);
+//         LCD_string("OK");
+//         _delay_ms(1000);
         UART_ESP8266_cmd("AT+CIPSTART=\"TCP\",\"35.162.70.152\",80");
         _delay_ms(1000);
         UART_ESP8266_cmd("AT+CIPSEND=34");
         _delay_ms(1000);
-        UART_ESP8266_cmd("GET /add/0F02D777CF/o HTTP/1.0");
+        UART_ESP8266_cmd("GET /add/0Q02D777CF/o HTTP/1.0");
         UART_ESP8266_cmd(0);
-        _delay_ms(1000);
         break;
     }    
-}
-
-
-
-/************************************************************************/
-/* Buttons Functions                                                    */
-/************************************************************************/
-typedef enum {NONE, LEFT, RIGHT, UP, DOWN, OK, INVALID} button_t;
-
-button_t probe_buttons(void) {
-    button_t pressed;
-    if (!(PINB & 0x1F)) {
-        return NONE;
-    } else if (PINB & (1<<PB0)) {
-        pressed = RIGHT;
-    } else if (PINB & (1<<PB1)) {
-        pressed = LEFT;
-    } else if (PINB & (1<<PB2)) {
-        pressed = UP;
-    } else if (PINB & (1<<PB3)) {
-        pressed = DOWN;
-    } else if (PINB & (1<<PB4)) {
-        pressed = OK;
-    } else {
-        pressed = INVALID;
-    }
-    _delay_ms(200);
-    return pressed;
 }
 
 /************************************************************************/
@@ -566,7 +590,7 @@ int main(void) {
     LCD_init();
     T1SEC_init();
     UART_creader_init();
-    //UART_ESP8266_init();
+    UART_ESP8266_init();
     LCD_command(clear);
     LCD_string(" PharmaTracker 9");
     _delay_ms(2000);
