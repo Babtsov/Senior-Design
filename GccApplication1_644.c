@@ -15,6 +15,7 @@
 #define LCD_E                   PORTA2
 #define LCD_RS                  PORTA1
 
+#define ASSERT(condition)       if(!(condition)) {asm("break");}
 
 /************************************************************************/
 /* Buttons Functions                                                    */
@@ -22,6 +23,7 @@
 typedef enum {NONE, LEFT, RIGHT, UP, DOWN, OK, INVALID} button_t;
 
 button_t probe_buttons(void) {
+    ASSERT((PINB & 0x1F) == ((PINB & 0x1F) & -(PINB & 0x1F))); // assert only 1 button is pressed at a time
     button_t pressed;
     if (!(PINB & 0x1F)) {
         return NONE;
@@ -171,7 +173,8 @@ ISR(USART0_RX_vect) {
     char c = UART_creader_receive();
     UART_creader_send(c); // debug:: echo
     if (creader_buff.locked) return; 
-    uint8_t index = creader_buff.index;
+    int8_t index = creader_buff.index;
+    ASSERT(0 <= index && index < CREADER_BUFF_SIZE);
     if ((index == 0 && c != 0x0A) || (index == CREADER_BUFF_SIZE - 1 && c != 0x0D)) {
         creader_buff.index = 0; // reset buffer since data is not valid
         return;
@@ -305,6 +308,7 @@ void UART_ESP8266_init(void) {
 ISR(USART1_RX_vect) {
     char c = UART_ESP8266_receive();
     int row = ESP8266.row_index, col = ESP8266.col_index;
+    ASSERT(0 <= col && col < ESP8266_COL_SIZE)
     ESP8266.buffer[row][col] = c;
     if ((col > 0 && ESP8266.buffer[row][col - 1] == 0x0D && ESP8266.buffer[row][col] == 0x0A)
     || (col == ESP8266_COL_SIZE - 1)) {
@@ -456,6 +460,7 @@ void probe_card_reader(void) {
     LCD_command(clear);
     int card_index = find_card();
     if (card_index >= 0) {                      // check if card is found
+        ASSERT(card_index < CARD_COUNT);
         if (!cards[card_index].checked_out) {   // reset time if card is not checked out
             cards[card_index].time_left = cards[card_index].max_time;
         }
@@ -525,7 +530,8 @@ int clocks_screen(int screen_index) {
         if (cards[1].checked_out) LCD_string(" OUT");
         else LCD_string(" IN");
     }
-    return 0; // execution shouldn't reach this point
+    ASSERT(false); // execution shouldn't reach this point
+    return 0;
 }
 int tagsID_screen(int screen_index) {
     LCD_command(clear);
@@ -544,7 +550,8 @@ int tagsID_screen(int screen_index) {
         LCD_string("2: ");
         LCD_string(get_card_id(1));
     }
-    return 0; // execution shouldn't reach this point
+    ASSERT(false); // execution shouldn't reach this point
+    return 0;
 }
 int confirm_configuration_screen(int screen_index) {
     LCD_command(clear);
@@ -567,7 +574,8 @@ int confirm_configuration_screen(int screen_index) {
         LCD_command(setCursor | lineTwo);
         LCD_string("configure system");
     }
-    return 0; // execution shouldn't reach this point
+    ASSERT(false); // execution shouldn't reach this point
+    return 0;
 }
 int main(void) {
     sei();
@@ -590,5 +598,6 @@ int main(void) {
         else next_screen = 0;
         current_screen = next_screen;
     }
-    return 0; // execution shouldn't reach this point
+    ASSERT(false); // execution shouldn't reach this point
+    return 0;
 }
