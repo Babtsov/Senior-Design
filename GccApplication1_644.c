@@ -288,7 +288,7 @@ void UART_ESP8266_init(void) {
         UART_ESP8266_cmd("AT+RST");
         LCD_command(clear);
         LCD_string("Resetting WIFI..");
-        _delay_ms(2000);
+        _delay_ms(1000);
         if (!ESP8266_find("ready")) { // seems like the ESP8266 didn't respond...
             LCD_command(clear);
             LCD_string("timeout/UART err");
@@ -298,7 +298,7 @@ void UART_ESP8266_init(void) {
             continue;
         }
         UART_ESP8266_cmd("ATE0"); // disable echo
-        _delay_ms(1000);
+        _delay_ms(500);
         if (!isConnected())       // check if we have Internet connectivity
             continue;             // user pressed reset, so restart ESP8266
         _delay_ms(2000);
@@ -435,16 +435,22 @@ bool set_card_id(int index) {
     LCD_string(":");
     LCD_command(setCursor | lineTwo);
     LCD_string(get_card_id(index));
-    bool setup_complete = false;
+    bool setup_complete = false, new_scanned_card = false;
     for(;;) {
         button_t pressed = probe_buttons();
         if (isready_creader_buff()) { // if something is available, show it to the screen
             LCD_command(setCursor | lineTwo);
             LCD_string(get_card_id(CREADER_INDEX));
+            new_scanned_card = true;
             release_creader_buff();
         } else if (pressed == OK || pressed == RIGHT) {
-            strcpy(get_card_id(index), get_card_id(CREADER_INDEX));
             setup_complete = true;
+            if (new_scanned_card) {
+                LCD_command(clear);
+                LCD_string("Updating...");
+                strcpy(get_card_id(index), get_card_id(CREADER_INDEX));
+                upload_to_server(get_card_id(index), 'n');
+            }                
             break;
         } else if (pressed == LEFT) {
             setup_complete = false;
@@ -496,14 +502,9 @@ int setup_screen(void) {
     LCD_command(clear);
     int counter = 0;
     for (;;) {
-        if (counter == 2 * CARD_COUNT) break; // # of config stages times # of cards
-        bool success;
-        if (counter % 2 == 0) {
-            success = set_card_id(counter / 2);
-        } else {
-            success = set_card_timeout(counter / 2);
-        }
-        counter = (success) ? counter + 1 : counter - 1;
+        if (counter == 2 * CARD_COUNT) break; // (# of config stages) * (# of cards) -> done with config
+        bool success = ((counter & 1) == 0)? set_card_id(counter >> 1) : set_card_timeout(counter >> 1);
+        counter = (success)? counter + 1 : counter - 1;
         if (counter < 0) break; // exit the setup screen
     }
     enable_T1SEC(); // let the time start ticking...
