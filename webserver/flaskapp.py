@@ -21,7 +21,7 @@ def close_database_connection(exception):
         database.close()
 
 
-class Event: CHECK_IN, CHECK_OUT, ALARM = range(3)
+class Event: CHECK_IN, CHECK_OUT, ALARM, REGISTERED = range(4)
 
 @app.context_processor
 def utility_processor():
@@ -32,6 +32,8 @@ def utility_processor():
             return dict(description="checked out", color="warning")
         elif event == Event.ALARM:
             return dict(description="alarm triggered", color="danger")
+        elif event == Event.REGISTERED:
+            return dict(description="card registered", color="info")
         else:
             return dict(description="", color="info")
     return dict(get_event_info=get_event_info)
@@ -55,6 +57,8 @@ def add_entry(rfid, action):
         event = Event.CHECK_OUT
     elif action == 'a':
         event = Event.ALARM
+    elif action == 'r':
+        event = Event.REGISTERED
     else:
         abort(400, 'invalid action')
     connection = get_db_connection()
