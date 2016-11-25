@@ -9,7 +9,7 @@
 #define CREADER_BUFF_SIZE       12      // card reader buffer size
 #define CREADER_BAUD_REG_VAL    207     // card reader baud rate: 2400 (see pg. 242)
 #define ESP8266_BAUD_REG_VAL    51      // WiFi chip baud rate: 9600 (see pg. 242)
-#define SERVER_IP               "35.162.70.152"
+#define SERVER_IP_ADDRESS       "35.162.70.152"
 #define LCD_DIR                 DDRA
 #define LCD_PORT                PORTA
 #define LCD_E                   PORTA2
@@ -242,20 +242,22 @@ void ESP8266_clear_buffer(void) {
 //keeps polling ESP8266 connection status until connected or user pressed "back" to cancel
 bool isConnected(void) { 
     LCD_command(clear);
-    LCD_string("Connection:");
+    LCD_string("Connecting...");
+    LCD_command(setCursor | lineTwo);
+    LCD_string("Connected:");
     for (;;) {
         UART_ESP8266_cmd("AT+CIPSTATUS");
-        _delay_ms(2000);
+        _delay_ms(500);
         LCD_command(setCursor | lineTwo);
         if (ESP8266_find("STATUS:2")) {
-            LCD_string("Connected    ");
+            LCD_string("Connected: YES");
             ESP8266_clear_buffer();
             return true;
         } else if (ESP8266_find("STATUS:5")) {
-            LCD_string("Disconnected");
+            LCD_string("Connected: NO ");
             ESP8266_clear_buffer();
         } else {
-            LCD_string("No response.....");
+            LCD_string("No response...");
         }
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
@@ -269,7 +271,7 @@ void upload_to_server(char * rfid, char action) {
         HTTP_request_buffer[9 + i] = rfid[i];
     }
     HTTP_request_buffer[20] = action; // copy the action (index 20 which is &)
-    UART_ESP8266_cmd("AT+CIPSTART=\"TCP\",\""SERVER_IP"\",80");
+    UART_ESP8266_cmd("AT+CIPSTART=\"TCP\",\""SERVER_IP_ADDRESS"\",80");
     _delay_ms(1000);
     UART_ESP8266_cmd("AT+CIPSEND=34");
     _delay_ms(1000);
@@ -301,7 +303,7 @@ void UART_ESP8266_init(void) {
         _delay_ms(500);
         if (!isConnected())       // check if we have Internet connectivity
             continue;             // user pressed reset, so restart ESP8266
-        _delay_ms(2000);
+        _delay_ms(1000);
         break;
     }    
 }
@@ -349,13 +351,14 @@ void buzzer_init(void) {
     TCCR0A |= (1 << WGM01);
     TCCR0B = (1 << CS02);   // prescalar is 256 (see pg. 177)
     OCR0A = 15;             // TOP value:  0.0005/(1/(F_CPU/prescaler))-1
-    PORTB &= ~(1 << PB5);
+    PORTB |= (1 << PB5);
 }
 inline void enable_buzzer(void) {
     TIMSK0 |= 1 << OCF0A;
 }
 inline void disable_buzzer(void) {
     TIMSK0 &= ~(1 << OCF0A);
+    PORTB |= (1 << PB5);
 }
 ISR(TIMER0_COMPA_vect) {
     PORTB  ^= (1 << PB5);
@@ -449,7 +452,7 @@ bool set_card_id(int index) {
                 LCD_command(clear);
                 LCD_string("Updating...");
                 strcpy(get_card_id(index), get_card_id(CREADER_INDEX));
-                upload_to_server(get_card_id(index), 'n');
+                upload_to_server(get_card_id(index), 'r');
             }                
             break;
         } else if (pressed == LEFT) {
