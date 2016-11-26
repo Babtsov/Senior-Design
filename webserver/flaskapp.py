@@ -2,9 +2,9 @@ from flask import Flask, render_template, abort, g
 from datetime import datetime
 import sqlite3
 
-app = Flask(__name__)
-
 DATABASE = '/data/logs.db'
+
+app = Flask(__name__)
 
 
 def get_db_connection():
@@ -21,7 +21,7 @@ def close_database_connection(exception):
         database.close()
 
 
-class Event: CHECK_IN, CHECK_OUT, ALARM, REGISTERED = range(4)
+class Event: CHECK_IN, CHECK_OUT, ALARM, REGISTERED, BOOT = range(5)
 
 @app.context_processor
 def utility_processor():
@@ -33,9 +33,11 @@ def utility_processor():
         elif event == Event.ALARM:
             return dict(description="alarm triggered", color="danger")
         elif event == Event.REGISTERED:
-            return dict(description="card registered", color="info")
+            return dict(description="card registered", color="")
+        elif event == Event.BOOT:
+            return dict(description="system restarted", color="info")
         else:
-            return dict(description="", color="info")
+            return dict(description="", color="")
     return dict(get_event_info=get_event_info)
 
 
@@ -59,6 +61,8 @@ def add_entry(rfid, action):
         event = Event.ALARM
     elif action == 'r':
         event = Event.REGISTERED
+    elif action == 'b':
+        event = Event.BOOT
     else:
         abort(400, 'invalid action')
     connection = get_db_connection()
