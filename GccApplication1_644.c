@@ -299,11 +299,10 @@ void UART_ESP8266_init(void) {
             _delay_ms(1000);
             continue;
         }
-        UART_ESP8266_cmd("ATE0"); // disable echo
+        UART_ESP8266_cmd("ATE0"); // disable ESP8266 echo functionality
         _delay_ms(500);
-        if (!isConnected())       // check if we have Internet connectivity
-            continue;             // user pressed reset, so restart ESP8266
-        _delay_ms(1000);
+        if (!isConnected()) continue;       // if user pressed reset, restart ESP8266
+        upload_to_server("---------",'b');  // record the restart of the system
         break;
     }    
 }
@@ -316,7 +315,7 @@ ISR(USART1_RX_vect) {
     || (col == ESP8266_COL_SIZE - 1)) {
         ESP8266.buffer[row][col - 1] = 0; // insert null terminator
         ESP8266.row_index = (row == ESP8266_ROW_SIZE - 1)? 0: row + 1;
-        ESP8266.col_index = 0;  // CR
+        ESP8266.col_index = 0;  // return to the beginning of the line
         return;
     }
     ESP8266.col_index++;
@@ -470,14 +469,19 @@ void probe_card_reader(void) {
     int card_index = find_card();
     if (card_index >= 0) {                      // check if card is found
         ASSERT(card_index < CARD_COUNT);
-        if (!cards[card_index].checked_out) {   // reset time if card is not checked out
+        cards[card_index].checked_out ^= 1;     // toggle card status
+        if (!cards[card_index].checked_out) {   // reset time if card checked in
             cards[card_index].time_left = cards[card_index].max_time;
         }
-        cards[card_index].checked_out ^= 1;     // toggle card status
         LCD_string("Card ");
         LCD_char(card_index + '1');
-        LCD_string(" detected!");
+        if (cards[card_index].checked_out) {
+            LCD_string(" check out");
+        } else {
+            LCD_string(" check in");
+        }
         LCD_command(setCursor | lineTwo);
+        LCD_string("ID: ");
         LCD_string(get_card_id(card_index));
         upload_to_server(get_card_id(card_index), get_card_status(card_index));
     } else {
@@ -492,15 +496,15 @@ void probe_card_reader(void) {
 
 /************************************************************************/
 /* UI screen functions                                                  */
-/* Each UI screen function returns the code of the next screen          */
-/* to transition to.                                                    */
-/* Screen codes:                                                        */
-/* 0    - clocks screen     - show the remaining time of each tag       */
-/* 1    - confirm config    - confirm the config screen                 */
-/* 2    - tags ID screen    - show the ID of each tag                   */
-/* 100  - setup screen      - configure the system with time & tag ID   */
+/* Each UI screen function returns the next screen to transition to.    */
+/* clocks screen     - show the remaining time of each tag              */
+/* confirm setup     - if user pressed OK, goes to setup screen         */
+/* tags ID screen    - show the ID of each tag                          */
+/* setup screen      - configure the system with time & tag ID          */
 /************************************************************************/
-int setup_screen(void) {
+typedef enum {CLOCKS_SCREEN, CONFIRM_SETUP_SCREEN, TAGS_SCREEN, SETUP_SCREEN, INVALID_SCREEN} screen_t;
+
+screen_t setup_screen(void) {
     disable_T1SEC(); // stop timer while we are at the setup
     LCD_command(clear);
     int counter = 0;
@@ -511,41 +515,43 @@ int setup_screen(void) {
         if (counter < 0) break; // exit the setup screen
     }
     enable_T1SEC(); // let the time start ticking...
-    return 0; // go back to the clock screen
+    return CLOCKS_SCREEN; // go back to the clock screen
 }
-int clocks_screen(int screen_index) {
+screen_t clocks_screen(void) {
     LCD_command(clear);
     for(;;) {
         probe_card_reader();
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
-            return screen_index - 1;
+            return TAGS_SCREEN;
         } else if (pressed == RIGHT) {
-            return screen_index + 1;
+            return CONFIRM_SETUP_SCREEN;
         }
         LCD_command(home);
-        LCD_string("1: ");
-        LCD_string(format_time(cards[0].time_left));
-        if (cards[0].checked_out) LCD_string(" OUT");
-        else LCD_string(" IN");
-        LCD_command(setCursor | lineTwo);
-        LCD_string("2: ");
-        LCD_string(format_time(cards[1].time_left));
-        if (cards[1].checked_out) LCD_string(" OUT");
-        else LCD_string(" IN");
+        for (int i = 0; i < 2; i++) {
+            LCD_char(i + '1');
+            LCD_string(": ");
+            LCD_string(format_time(cards[i].time_left));
+            if (cards[i].time_left == 0) {
+                LCD_string(" ALARMED");
+            } else if (cards[i].checked_out) {
+                LCD_string(" OUT");
+            } else {
+                LCD_string(" IN");
+            }
+            LCD_command(setCursor | lineTwo);
+        }
     }
-    ASSERT(false); // execution shouldn't reach this point
-    return 0;
 }
-int tagsID_screen(int screen_index) {
+screen_t tagsID_screen(void) {
     LCD_command(clear);
     for(;;) {
         probe_card_reader();
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
-            return screen_index - 1;
+            return CONFIRM_SETUP_SCREEN;
         } else if (pressed == RIGHT) {
-            return screen_index + 1;
+            return CLOCKS_SCREEN;
         }
         LCD_command(home);
         LCD_string("1: ");
@@ -554,10 +560,8 @@ int tagsID_screen(int screen_index) {
         LCD_string("2: ");
         LCD_string(get_card_id(1));
     }
-    ASSERT(false); // execution shouldn't reach this point
-    return 0;
 }
-int confirm_configuration_screen(int screen_index) {
+screen_t confirm_setup_screen(void) {
     LCD_command(clear);
     enable_buzzer();
     for(;;) {
@@ -565,21 +569,19 @@ int confirm_configuration_screen(int screen_index) {
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
             disable_buzzer();
-            return screen_index - 1;
+            return CLOCKS_SCREEN;
         } else if (pressed == RIGHT) {
             disable_buzzer();
-            return screen_index + 1;
+            return TAGS_SCREEN;
         } else if (pressed == OK) {
             disable_buzzer();
-            return 100; // go to setup screen
+            return SETUP_SCREEN;
         }
         LCD_command(home);
         LCD_string("Press OK to");
         LCD_command(setCursor | lineTwo);
         LCD_string("configure system");
     }
-    ASSERT(false); // execution shouldn't reach this point
-    return 0;
 }
 int main(void) {
     sei();
@@ -592,14 +594,26 @@ int main(void) {
     LCD_string(" PharmaTracker 9");
     _delay_ms(2000);
     enable_T1SEC();
-    int current_screen = 0, next_screen;
+    screen_t current_screen = CLOCKS_SCREEN;
     for(;;) {
-        if (current_screen < 0) next_screen = 2; // loop back to the ID's screen
-        else if (current_screen == 0) next_screen = clocks_screen(current_screen);
-        else if (current_screen == 1) next_screen = confirm_configuration_screen(current_screen);
-        else if (current_screen == 2) next_screen = tagsID_screen(current_screen);
-        else if (current_screen == 100) next_screen = setup_screen();
-        else next_screen = 0;
+        screen_t next_screen;
+        switch(current_screen) {
+            case CLOCKS_SCREEN:
+                next_screen = clocks_screen();
+                break;
+            case CONFIRM_SETUP_SCREEN:
+                next_screen = confirm_setup_screen();
+                break;
+            case TAGS_SCREEN:
+                next_screen = tagsID_screen();
+                break;
+            case SETUP_SCREEN:
+                next_screen = setup_screen();
+                break;
+            default:
+                next_screen = INVALID_SCREEN;
+        }
+        ASSERT(next_screen != INVALID_SCREEN);
         current_screen = next_screen;
     }
     ASSERT(false); // execution shouldn't reach this point
