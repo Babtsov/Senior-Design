@@ -276,7 +276,7 @@ void upload_to_server(char * rfid, char action) {
     UART_ESP8266_cmd("AT+CIPSEND=34");
     _delay_ms(1000);
     UART_ESP8266_cmd(HTTP_request_buffer);
-    UART_ESP8266_cmd(0);
+    UART_ESP8266_cmd("");
     _delay_ms(1000);
 }
 void UART_ESP8266_init(void) {
