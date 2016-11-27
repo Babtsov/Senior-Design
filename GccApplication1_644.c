@@ -116,21 +116,24 @@ void LCD_uint(uint16_t num) {
 /************************************************************************/
 #define CREADER_INDEX -1
 
+typedef enum {CHECKED_OUT, CHECKED_IN, ALARMED} card_status_t;
+
 struct {
     char id[CREADER_BUFF_SIZE + 1]; // the RFID tag of the card attached to the medicine
     uint16_t max_time;              // maximum amount of time a medicine can be checked out
     volatile uint16_t time_left;    // how much time remaining until medicine goes bad
-    bool checked_out;               // is this medicine currently checked out
+    card_status_t status;           // is this medicine currently checked out, checked it, or overdue?
+    bool armed;                     // flag used by check_alarm to upload the alarm triggered event only once
 } cards[CARD_COUNT] = {             // default initializations mainly used for debugging
-    [0].id = {0x00, 0x33, 0x31, 0x30, 0x30, 0x33, 0x37, 0x44, 0x39, 0x33, 0x44},
-    [0].max_time = 2000, [0].time_left = 2000, [0].checked_out = false,
-    [1].id = {0x00, 0x36, 0x36, 0x30, 0x30, 0x36, 0x43, 0x34, 0x42, 0x37, 0x46},
-    [1].max_time = 68, [1].time_left = 68, [1].checked_out = false
+    [0].id = {0x00, 0x33, 0x31, 0x30, 0x30, 0x33, 0x37, 0x44, 0x39, 0x33, 0x44, 0x00, 0x00},
+    [0].max_time = 5, [0].time_left = 5, [0].status = CHECKED_IN, [0].armed = true,
+    [1].id = {0x00, 0x36, 0x36, 0x30, 0x30, 0x36, 0x43, 0x34, 0x42, 0x37, 0x46, 0x00, 0x00},
+    [1].max_time = 10, [1].time_left = 10, [1].status = CHECKED_IN, [1].armed = true
 };
 struct {
     volatile char ID_str[CREADER_BUFF_SIZE + 1];    //extra char for null terminator
     volatile uint8_t index;                         // pointer to an unoccupied slot
-    volatile bool locked;                           // buffer is locked from modifications by the ISR
+    volatile bool locked;                           // buffer is locked from modifications by the UART rx ISR
 } creader_buff;
 
 void UART_creader_init(void) {
@@ -157,9 +160,6 @@ inline void release_creader_buff(void) {
 char * get_card_id(int8_t index) {
     char * rfid = (index == CREADER_INDEX)? (char *) creader_buff.ID_str : cards[index].id;
     return  (rfid + 1); // actually return a pointer to index 1 as index 0 is always 0x00
-}
-inline char get_card_status(uint8_t index) {
-    return (cards[index].checked_out)? 'o' : 'i';
 }
 int find_card(void) {
     for (int i = 0; i < CARD_COUNT; i++) {
@@ -266,7 +266,7 @@ bool isConnected(void) {
     }
 }
 void upload_to_server(char * rfid, char action) {
-    static char HTTP_request_buffer[] = "GET /add/##########/& HTTP/1.0";
+    char HTTP_request_buffer[] = "GET /add/##########/& HTTP/1.0";
     for (int i = 0 ; i < 10; i++) { // copy the RFID to the buffer (starting at first # which is index 9)
         HTTP_request_buffer[9 + i] = rfid[i];
     }
@@ -302,7 +302,7 @@ void UART_ESP8266_init(void) {
         UART_ESP8266_cmd("ATE0"); // disable ESP8266 echo functionality
         _delay_ms(500);
         if (!isConnected()) continue;       // if user pressed reset, restart ESP8266
-        upload_to_server("---------",'b');  // record the restart of the system
+        upload_to_server("----------",'b');  // record the restart of the system
         break;
     }    
 }
@@ -336,14 +336,14 @@ inline void disable_T1SEC(void) {
 }
 ISR(TIMER1_COMPA_vect) {
     for (uint8_t i = 0; i < CARD_COUNT; i++) {
-        if (cards[i].time_left > 0 && cards[i].checked_out) {
+        if (cards[i].time_left > 0 && cards[i].status == CHECKED_OUT) {
             cards[i].time_left--;
         }
     }
 }
 
 /************************************************************************/
-/* 1 KHz Timer Functions                                             */
+/* 1 KHz Timer Functions                                                */
 /************************************************************************/
 void buzzer_init(void) {
     DDRB |= (1 << PB5);
@@ -462,38 +462,65 @@ bool set_card_id(int index) {
     return setup_complete;
 }
 void probe_card_reader(void) {
-    if (!isready_creader_buff()) { // no card is near the RFID scanner
-        return;
-    }
+    if (!isready_creader_buff()) return; // no card is near the RFID scanner
     LCD_command(clear);
     int card_index = find_card();
-    if (card_index >= 0) {                      // check if card is found
-        ASSERT(card_index < CARD_COUNT);
-        cards[card_index].checked_out ^= 1;     // toggle card status
-        if (!cards[card_index].checked_out) {   // reset time if card checked in
-            cards[card_index].time_left = cards[card_index].max_time;
-        }
-        LCD_string("Card ");
-        LCD_char(card_index + '1');
-        if (cards[card_index].checked_out) {
-            LCD_string(" check out");
-        } else {
-            LCD_string(" check in");
-        }
-        LCD_command(setCursor | lineTwo);
-        LCD_string("ID: ");
-        LCD_string(get_card_id(card_index));
-        upload_to_server(get_card_id(card_index), get_card_status(card_index));
-    } else {
+    if (card_index < 0) { // card not found
         LCD_string("This card is");
         LCD_command(setCursor | lineTwo);
         LCD_string("not registered.");
         _delay_ms(500);
+        LCD_command(clear);
+        release_creader_buff();
+        return;
     }
+    ASSERT(card_index < CARD_COUNT);
+    LCD_string("Card ");
+    LCD_char(card_index + '1');
+    release_creader_buff();
+    card_status_t current_status = cards[card_index].status;
+    char status_to_upload = '?';
+    switch(current_status) {
+        case ALARMED:
+            disable_buzzer(); // disable buzzer and fall through
+        case CHECKED_OUT: 
+            cards[card_index].status = CHECKED_IN;
+            cards[card_index].armed = true;
+            cards[card_index].time_left = cards[card_index].max_time;
+            LCD_string(" check in");
+            status_to_upload = 'i';
+            break;
+        case CHECKED_IN:
+            cards[card_index].status = CHECKED_OUT;
+            LCD_string(" check out");
+            status_to_upload = 'o';
+            break;
+    }
+    ASSERT(status_to_upload != '?'); // make sure one of the cases was actually executed.
+    LCD_command(setCursor | lineTwo);
+    LCD_string("ID: ");
+    LCD_string(get_card_id(card_index));
+    upload_to_server(get_card_id(card_index), status_to_upload);
     LCD_command(clear);
     release_creader_buff();
 }
-
+void check_alarm(void) { //check if the card ran out of time and if we need to trigger the alarm
+    for (int i = 0; i < CARD_COUNT; i++) {
+        if (cards[i].time_left == 0 && cards[i].armed) {
+            enable_buzzer();
+            LCD_command(clear);
+            LCD_string("Card ");
+            LCD_char(i + '1');
+            LCD_string(" ran out");
+            LCD_command(setCursor | lineTwo);
+            LCD_string("of time!!!");
+            cards[i].status = ALARMED;
+            upload_to_server(get_card_id(i), 'a');
+            cards[i].armed = false;
+            LCD_command(clear);
+        }
+    }
+}
 /************************************************************************/
 /* UI screen functions                                                  */
 /* Each UI screen function returns the next screen to transition to.    */
@@ -506,6 +533,7 @@ typedef enum {CLOCKS_SCREEN, CONFIRM_SETUP_SCREEN, TAGS_SCREEN, SETUP_SCREEN, IN
 
 screen_t setup_screen(void) {
     disable_T1SEC(); // stop timer while we are at the setup
+    disable_buzzer(); // if currently buzzing, don't buzz while we are configuring the system
     LCD_command(clear);
     int counter = 0;
     for (;;) {
@@ -520,6 +548,7 @@ screen_t setup_screen(void) {
 screen_t clocks_screen(void) {
     LCD_command(clear);
     for(;;) {
+        check_alarm();
         probe_card_reader();
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
@@ -532,12 +561,10 @@ screen_t clocks_screen(void) {
             LCD_char(i + '1');
             LCD_string(": ");
             LCD_string(format_time(cards[i].time_left));
-            if (cards[i].time_left == 0) {
-                LCD_string(" ALARMED");
-            } else if (cards[i].checked_out) {
-                LCD_string(" OUT");
-            } else {
-                LCD_string(" IN");
+            switch(cards[i].status) {
+                case CHECKED_IN: LCD_string(" IN"); break;
+                case CHECKED_OUT: LCD_string(" OUT"); break;
+                case ALARMED: LCD_string(" ALARMED"); break;
             }
             LCD_command(setCursor | lineTwo);
         }
@@ -546,6 +573,7 @@ screen_t clocks_screen(void) {
 screen_t tagsID_screen(void) {
     LCD_command(clear);
     for(;;) {
+        check_alarm();
         probe_card_reader();
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
@@ -563,18 +591,15 @@ screen_t tagsID_screen(void) {
 }
 screen_t confirm_setup_screen(void) {
     LCD_command(clear);
-    enable_buzzer();
     for(;;) {
+        check_alarm();
         probe_card_reader();
         button_t pressed = probe_buttons();
         if (pressed == LEFT) {
-            disable_buzzer();
             return CLOCKS_SCREEN;
         } else if (pressed == RIGHT) {
-            disable_buzzer();
             return TAGS_SCREEN;
         } else if (pressed == OK) {
-            disable_buzzer();
             return SETUP_SCREEN;
         }
         LCD_command(home);
