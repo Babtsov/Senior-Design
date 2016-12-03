@@ -1,5 +1,5 @@
 from flask import Flask, render_template, abort, g
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlite3
 
 DATABASE = '/data/logs.db'
@@ -65,9 +65,10 @@ def add_entry(rfid, action):
         event = Event.BOOT
     else:
         abort(400, 'invalid action')
+    timestamp = datetime.now() - timedelta(seconds=3) # account for the 3 second delay
     connection = get_db_connection()
     cur = connection.cursor()
-    cur.execute('insert into log values(?, ?, ?)', (rfid, event, datetime.now()))
+    cur.execute('insert into log values(?, ?, ?)', (rfid, event, timestamp))
     cur.close()
     connection.commit()
     return 'OK\r\n'
