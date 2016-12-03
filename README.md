@@ -1,6 +1,6 @@
-<h1> <img src="./image/logo.jpg" width="31" height="46" /> Pharma-Tracker </h1>
+<h1> <img src="./image/logo.jpg" width="31" height="46" /> PharmaTracker <img src="./image/logo.jpg" width="31" height="46" /> </h1>
 
-Pharma-Tracker, our senior design project, consists of multiple parts:  
+PharmaTracker, our senior design project, consists of multiple parts:  
 * __The Receiver__ consists of a loop antenna resonating with a matched capacitor value, filters, amplifiers, and an ATtiny13 microcontroller to decode the manchester encoded data
 * __The Main board__ consists of the LCD screen, buttons, speaker circuitry and ATMEGA644 microcontroller containing the software that implements most of the logic of the system.
 * __The WiFi board__ consists of the ESP8266 Wifi module and additional circuitry required to convert the voltages from 5V to 3.3V
