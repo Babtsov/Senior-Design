@@ -1,4 +1,5 @@
-# Pharma-Tracker
+<h1> <img src="./image/logo.jpg" width="31" height="46" /> Pharma-Tracker </h1>
+
 Pharma-Tracker, our senior design project, consists of multiple parts:  
 * __The Receiver__ consists of a loop antenna resonating with a matched capacitor value, filters, amplifiers, and an ATtiny13 microcontroller to decode the manchester encoded data
 * __The Main board__ consists of the LCD screen, buttons, speaker circuitry and ATMEGA644 microcontroller containing the software that implements most of the logic of the system.
