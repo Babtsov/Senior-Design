@@ -1,6 +1,6 @@
 <h1> <img src="./image/logo.jpg" width="31" height="46" /> PharmaTracker <img src="./image/logo.jpg" width="31" height="46" /> </h1>
 
-PharmaTracker, our senior design project, consists of multiple parts:  
+PharmaTracker, our senior design project, consists of the following parts:  
 * __The Decoder board__ consists of a loop antenna resonating with a matched capacitor value, filters, amplifiers, and an ATtiny13 microcontroller to decode the manchester encoded data
 * __The Main board__ consists of the LCD screen, buttons, speaker circuitry and ATMEGA644 microcontroller containing the software that implements most of the logic of the system.
 * __The WiFi board__ consists of the ESP8266 Wifi module and additional circuitry required to convert the voltages from 5V to 3.3V
@@ -65,7 +65,9 @@ The baud rate was chosen to be 2400 baud to make it compatible with the off the 
 
 ## Implementing the IoT functionality
 Similarly to the decoder board, the WiFi board also communicates using UART. Instead of 2400 baud, we used 9600 baud (although higher speeds are probably possible). The ESP8266 Wifi module was preprogrammed to automatically connect to a predefined network (created by the home router). Once the ESP8266 module establishs a connection to the wireless LAN network, it creates a TCP connection with the remote server, through which it exchanges the information.  
-Since the ESP8266 didn't seem to have built in support for HTTP, we had to "implement" the various HTTP requests ourselves. For simplicity, we used a GET request to a special URL on the server to implement the data upload to the server (although technically a POST request would have been more appropriate for such an action). 
+Since the ESP8266 didn't seem to have built in support for HTTP, we had to "implement" the various HTTP requests ourselves. For simplicity, we used a GET request to a special URL on the server to implement the data upload to the server (although technically a POST request would have been more appropriate for such an action).  
 The following shows an example of such a GET request sent to the webserver:  
 `GET /add/0F02D777CF/i HTTP/1.0`  
 In this case, the RFID card number is 0F02D777CF and the action is `i` which stands for "checked in".
+### The webserver
+The server's function is to accept the connections made by the PharmaTracker system (for information upload), as well as to serve a static web page to the clients entering the site to view the PharmaTracker log. The webserver stores all the information uploaded to it in an SQL database (SQLite was used for the database). Both the server and the database reside inside the same (virtual) machine on the Amazon AWS cloud although technically, the server can also be deployed elsewhere. 
