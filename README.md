@@ -20,22 +20,21 @@ As can be seen the length of the long pulses are 500uS and the short ones are 25
 ### The decoding algorithm 
 The algorithm for Manchester decoded is described below in a python-like psudocode
 ```python
-
 decoded_bitsteam = []
 def get_first_manchester():
 	while True:
-		count = the number of consecutive samples of high or low until a voltage change is detected
+		count = detect_change() # number of consecutive samples until a voltage change is detected
 		if count >= long_pulse_value:
 			break
 	decoded_bitsteam.append(current_voltage)
 
 def get_next_manchester():
 	current_bit = decoded_bitsteam[-1] # get last element decoded
-	count = the number of consecutive samples of high or low until a voltage 
+	count = detect_change()
 	if count >= long_pulse_value:
 		decoded_bitsteam.append(current_bit ^ 1)
 	else:
-		count_rest = the number of consecutive samples of high or low until a voltage
+		count_rest = detect_change()
 		assert(count_rest < long_pulse_value) # make sure the next pulse is short as well
 		decoded_bitsteam.append(current_bit)
 ```
